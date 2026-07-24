@@ -1,4 +1,4 @@
-import { HomeData, LeagueActivityPage, LeagueData, LeagueSummary, MatchupData, ProfileData, TeamData } from '../../types/fantasy';
+import { HomeData, LeagueActivityPage, LeagueData, LeagueSummary, MatchupData, ProfileData, ProfileUpdate, TeamData } from '../../types/fantasy';
 
 /**
  * Contract shared by the temporary mock implementation and future backend implementation.
@@ -12,4 +12,6 @@ export interface FantasyService {
   getMatchup(leagueId?: string): Promise<MatchupData>;
   getProfile(): Promise<ProfileData>;
   getTeam(): Promise<TeamData>;
+  updateProfile(update: ProfileUpdate): Promise<ProfileData>;
+  updatePassword(currentPassword: string, newPassword: string): Promise<void>;
 }

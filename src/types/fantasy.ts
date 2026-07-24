@@ -107,7 +107,10 @@ export interface LeagueActivityEntry { actor: string; id: string; occurredAt: st
 export interface LeagueActivityPage { entries: LeagueActivityEntry[]; nextCursor: number | null; }
 /** Compact league record used by the global league switcher. */
 export interface LeagueSummary { id: string; memberCount: number; name: string; }
-export interface ProfileData { memberSince: string; name: string; }
+/** Account information displayed and edited from the Profile tab. */
+export interface ProfileData { avatarUrl: string; email: string; memberSince: string; name: string; username: string; }
+/** Mutable subset of profile fields accepted by the account settings endpoint. */
+export interface ProfileUpdate { avatarUrl: string; email: string; username: string; }
 export interface MatchupData {
   benchMatchups: PlayerMatchup[];
   gameTime: string;

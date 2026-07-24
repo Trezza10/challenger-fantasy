@@ -52,6 +52,7 @@ export function AppNavigator() {
   const [isViewingYourTeam, setIsViewingYourTeam] = useState(true);
   const [isPullingToRefresh, setIsPullingToRefresh] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isChatKeyboardActive, setIsChatKeyboardActive] = useState(false);
   const [homeViewKey, setHomeViewKey] = useState(0);
   const [leagueViewKey, setLeagueViewKey] = useState(0);
   const [matchupViewKey, setMatchupViewKey] = useState(0);
@@ -61,6 +62,7 @@ export function AppNavigator() {
   const [hoveredPlayerName, setHoveredPlayerName] = useState<string | null>(null);
   const inventoryRef = useRef<PowerCard[]>([]);
   const playerTargets = useRef<Record<string, PlayerDropTarget>>({});
+  const pageScrollRef = useRef<ScrollView>(null);
   const pageEndHandler = useRef<() => void>(() => {});
   const rosterEditActions = useRef<{ discard: () => void; save: () => void } | null>(null);
   const pageRefreshHandler = useRef<() => Promise<void>>(matchupRequest.refetch);
@@ -223,9 +225,9 @@ export function AppNavigator() {
   const screen = activeTab === 'Matchup'
     ? <MatchupScreen appliedCards={appliedCards} canPlayCard={canPlayCard} data={matchupRequest.data} draggingCard={draggingCard} hoveredPlayerName={hoveredPlayerName} key={`${activeLeagueId}-${matchupViewKey}`} managerRoster={managerRoster} onMatchupSelectionChange={setIsViewingYourMatchup} onRegisterDropTarget={registerDropTarget} onSelectPlayer={setSelectedPlayer} />
     : activeTab === 'Team'
-      ? <TeamScreen appliedCards={appliedCards} canPlayCard={canPlayCard} draggingCard={draggingCard} hoveredPlayerName={hoveredPlayerName} key={activeLeagueId} managerRoster={managerRoster} matchupData={matchupRequest.data} onCardPress={setSelectedCard} onManagerRosterChange={setManagerRoster} onRegisterRosterEditActions={(actions) => { rosterEditActions.current = actions; }} onRosterEditingChange={setIsEditingRoster} onRegisterDropTarget={registerDropTarget} onSelectPlayer={setSelectedPlayer} onTeamSelectionChange={setIsViewingYourTeam} />
+      ? <TeamScreen appliedCards={appliedCards} canPlayCard={canPlayCard} draggingCard={draggingCard} hoveredPlayerName={hoveredPlayerName} key={activeLeagueId} managerRoster={managerRoster} matchupData={matchupRequest.data} onCardPress={setSelectedCard} onManagerRosterChange={setManagerRoster} onRegisterReachEnd={registerPageEnd} onRegisterRosterEditActions={(actions) => { rosterEditActions.current = actions; }} onRosterEditingChange={setIsEditingRoster} onRegisterDropTarget={registerDropTarget} onSelectPlayer={setSelectedPlayer} onTeamSelectionChange={setIsViewingYourTeam} />
     : activeTab === 'League'
-      ? <LeagueScreen key={leagueViewKey} onRegisterReachEnd={registerPageEnd} onRegisterRefresh={registerPageRefresh} selectedLeague={selectedLeague} />
+      ? <LeagueScreen key={leagueViewKey} onChatInputBlur={() => setIsChatKeyboardActive(false)} onChatInputFocus={() => { setIsChatKeyboardActive(true); setTimeout(() => pageScrollRef.current?.scrollToEnd({ animated: true }), 120); }} onRegisterReachEnd={registerPageEnd} onRegisterRefresh={registerPageRefresh} selectedLeague={selectedLeague} />
       : activeTab === 'Home'
         ? <HomeScreen key={homeViewKey} onRegisterRefresh={registerPageRefresh} />
         : <ProfileScreen onRegisterRefresh={registerPageRefresh} />;
@@ -234,7 +236,7 @@ export function AppNavigator() {
     <SafeAreaView style={layout.app}>
       <StatusBar style="light" />
       <LeagueSelector leagues={leaguesRequest.data ?? []} onSelect={selectLeague} selectedLeague={selectedLeague} />
-      <ScrollView alwaysBounceVertical contentContainerStyle={[layout.content, styles.content]} onScroll={(event) => { const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent; setIsPullingToRefresh(contentOffset.y < -8); if (contentOffset.y + layoutMeasurement.height >= contentSize.height - 80) pageEndHandler.current(); }} onScrollBeginDrag={(event) => setIsPullingToRefresh(event.nativeEvent.contentOffset.y <= 0)} onScrollEndDrag={() => !isRefreshing && setIsPullingToRefresh(false)} onTouchCancel={() => !isRefreshing && setIsPullingToRefresh(false)} refreshControl={<RefreshControl colors={[colors.accent]} onRefresh={handleRefresh} refreshing={isRefreshing} tintColor={colors.accent} />} scrollEventThrottle={16} style={styles.scroll}>
+      <ScrollView automaticallyAdjustKeyboardInsets alwaysBounceVertical contentContainerStyle={[layout.content, styles.content, isChatKeyboardActive && styles.chatKeyboardContent]} keyboardShouldPersistTaps="handled" onScroll={(event) => { const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent; setIsPullingToRefresh(contentOffset.y < -8); if (contentOffset.y + layoutMeasurement.height >= contentSize.height - 80) pageEndHandler.current(); }} onScrollBeginDrag={(event) => setIsPullingToRefresh(event.nativeEvent.contentOffset.y <= 0)} onScrollEndDrag={() => !isRefreshing && setIsPullingToRefresh(false)} onTouchCancel={() => !isRefreshing && setIsPullingToRefresh(false)} ref={pageScrollRef} refreshControl={<RefreshControl colors={[colors.accent]} onRefresh={handleRefresh} refreshing={isRefreshing} tintColor={colors.accent} />} scrollEventThrottle={16} style={styles.scroll}>
         <View style={layout.screen}>{screen}</View>
       </ScrollView>
 
@@ -265,6 +267,7 @@ export function AppNavigator() {
 }
 
 const styles = StyleSheet.create({
+  chatKeyboardContent: { paddingBottom: 14 },
   scroll: { flex: 1 },
   content: { flexGrow: 1 },
   pullIndicator: { alignItems: 'center', elevation: 50, left: 0, position: 'absolute', right: 0, top: 8, zIndex: 50 },

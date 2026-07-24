@@ -1,4 +1,4 @@
-import { HomeData, LeagueActivityEntry, LeagueData, LeagueMatchupSummary, LeagueSummary, MatchupData, MatchupPlayerData, Position, PowerCard, ProfileData, TeamData } from '../../types/fantasy';
+import { HomeData, LeagueActivityEntry, LeagueData, LeagueMatchupSummary, LeagueSummary, MatchupData, MatchupPlayerData, Position, PowerCard, ProfileData, ProfileUpdate, TeamData } from '../../types/fantasy';
 import { FantasyService } from './FantasyService';
 import { createMockCard, createMockInventory } from './mockCardCatalog';
 
@@ -20,7 +20,7 @@ const leagues: LeagueSummary[] = [
   { id: 'sunday-rivals', memberCount: 12, name: 'Sunday Rivals' },
   { id: 'office-gridiron', memberCount: 8, name: 'Office Gridiron' },
 ];
-const profile: ProfileData = { memberSince: '2026', name: 'Your Name' };
+let profile: ProfileData = { avatarUrl: 'https://api.dicebear.com/10.x/adventurer-neutral/png?seed=Your%20Name', email: 'manager@challengers.app', memberSince: '2026', name: 'Your Name', username: 'yourname' };
 
 /** Static feed data, sorted newest first, used to exercise cursor pagination in the UI. */
 const activityFeed: LeagueActivityEntry[] = [
@@ -197,4 +197,6 @@ export const mockFantasyService: FantasyService = {
   async getMatchup(leagueId = 'challengers') { await mockNetworkDelay(); return matchupDataByLeagueId[leagueId] ?? matchup; },
   async getProfile() { await mockNetworkDelay(); return profile; },
   async getTeam() { await mockNetworkDelay(); return team; },
+  async updateProfile(update: ProfileUpdate) { await mockNetworkDelay(); profile = { ...profile, ...update, name: update.username || profile.name }; return profile; },
+  async updatePassword(_currentPassword: string, _newPassword: string) { await mockNetworkDelay(); },
 };

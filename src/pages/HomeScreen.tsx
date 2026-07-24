@@ -23,8 +23,8 @@ export function HomeScreen({ onRegisterRefresh }: { onRegisterRefresh: (refresh:
 
   return (
     <View style={styles.screen}>
-      <Card title="WELCOME BACK, MANAGER"><Text style={styles.text}>{data.welcomeMessage}</Text></Card>
-      <Card title="THIS WEEK"><Stat label="Projected points" value={formatPoints(data.projectedPoints)} /><Stat label="League rank" value={data.leagueRank} /></Card>
+      {/* <Card title="WELCOME BACK, MANAGER"><Text style={styles.text}>{data.welcomeMessage}</Text></Card>
+      <Card title="THIS WEEK"><Stat label="Projected points" value={formatPoints(data.projectedPoints)} /><Stat label="League rank" value={data.leagueRank} /></Card> */}
       <View style={styles.newsHeader}><Text style={styles.sectionTitle}>LEAGUE NEWS</Text><Text style={styles.sectionMeta}>LATEST</Text></View>
       {data.news.map((story) => <Pressable key={story.id} onPress={() => setSelectedStory(story)} style={styles.newsCard}><Text style={styles.category}>{story.category}</Text><Text style={styles.newsTitle}>{story.title}</Text><Text numberOfLines={2} style={styles.summary}>{story.summary}</Text><View style={styles.newsFooter}><Text style={styles.time}>{story.publishedAt}</Text><Ionicons color={colors.accent} name="arrow-forward" size={16} /></View></Pressable>)}
     </View>

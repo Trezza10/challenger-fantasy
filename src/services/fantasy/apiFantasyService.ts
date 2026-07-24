@@ -1,5 +1,5 @@
-import { HomeData, LeagueActivityPage, LeagueData, LeagueSummary, MatchupData, ProfileData, TeamData } from '../../types/fantasy';
-import { apiFetch } from '../api/client';
+import { HomeData, LeagueActivityPage, LeagueData, LeagueSummary, MatchupData, ProfileData, ProfileUpdate, TeamData } from '../../types/fantasy';
+import { apiFetch, apiRequest } from '../api/client';
 import { FantasyService } from './FantasyService';
 
 /** Real provider. Update these endpoint paths when the backend API is finalized. */
@@ -11,4 +11,6 @@ export const apiFantasyService: FantasyService = {
   getMatchup: (leagueId = 'challengers') => apiFetch<MatchupData>(`/leagues/${leagueId}/matchup`),
   getProfile: () => apiFetch<ProfileData>('/profile'),
   getTeam: () => apiFetch<TeamData>('/team'),
+  updateProfile: (update: ProfileUpdate) => apiRequest<ProfileData>('/profile', { body: JSON.stringify(update), headers: { 'Content-Type': 'application/json' }, method: 'PATCH' }),
+  updatePassword: (currentPassword: string, newPassword: string) => apiRequest<void>('/profile/password', { body: JSON.stringify({ currentPassword, newPassword }), headers: { 'Content-Type': 'application/json' }, method: 'PATCH' }),
 };

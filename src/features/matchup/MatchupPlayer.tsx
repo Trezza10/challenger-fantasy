@@ -1,8 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../../theme/colors';
+import { getPositionColor } from '../../theme/positions';
 import { AppliedModifier, MatchupPlayerData, Position, PowerCard } from '../../types/fantasy';
 import { getAvatarUrl } from '../../utils/formatters';
+import { getGameInfo } from '../../utils/gameInfo';
 
 /** Data needed to render one left-versus-right player matchup row. */
 interface MatchupPlayerProps {
@@ -29,13 +31,13 @@ export function MatchupPlayer({ canPlayCard, draggingCard, hoveredPlayerName, le
   return (
     <View style={styles.row}>
       <View ref={(node) => onRegisterDropTarget(leftPlayer, true, node)} style={styles.playerSide}>
-        <Pressable onPress={() => onSelectPlayer(leftPlayer)} style={styles.playerPressable}><Avatar name={leftName} /><PlayerDetails appliedCards={leftAppliedCards} isHoveredTarget={hoveredPlayerName === leftPlayer.name} isValidTarget={leftIsValid} name={leftName} position={position} /></Pressable>
+        <Pressable onPress={() => onSelectPlayer(leftPlayer)} style={styles.playerPressable}><Avatar name={leftName} /><PlayerDetails appliedCards={leftAppliedCards} isHoveredTarget={hoveredPlayerName === leftPlayer.name} isValidTarget={leftIsValid} name={leftName} position={position} team={leftPlayer.team} /></Pressable>
       </View>
       <Text numberOfLines={1} style={styles.score}>{leftScore}</Text>
-      <Text style={styles.position}>{position}</Text>
+      <Text style={[styles.position, { color: getPositionColor(position) }]}>{position}</Text>
       <Text numberOfLines={1} style={[styles.score, styles.rightScore]}>{rightScore}</Text>
       <View ref={(node) => onRegisterDropTarget(rightPlayer, false, node)} style={[styles.playerSide, styles.rightPlayer]}>
-        <Pressable onPress={() => onSelectPlayer(rightPlayer)} style={[styles.playerPressable, styles.rightPlayer]}><PlayerDetails appliedCards={rightAppliedCards} isHoveredTarget={hoveredPlayerName === rightPlayer.name} isValidTarget={rightIsValid} name={rightName} position={position} /><Avatar name={rightName} opponent /></Pressable>
+        <Pressable onPress={() => onSelectPlayer(rightPlayer)} style={[styles.playerPressable, styles.rightPlayer]}><PlayerDetails appliedCards={rightAppliedCards} isHoveredTarget={hoveredPlayerName === rightPlayer.name} isValidTarget={rightIsValid} name={rightName} position={position} team={rightPlayer.team} /><Avatar name={rightName} opponent /></Pressable>
       </View>
     </View>
   );
@@ -47,8 +49,9 @@ function Avatar({ name, opponent = false }: { name: string; opponent?: boolean }
 }
 
 /** Keeps a player's name and position presentation consistent on both sides. */
-function PlayerDetails({ appliedCards = [], isHoveredTarget, isValidTarget, name, position }: { appliedCards?: AppliedModifier[]; isHoveredTarget: boolean; isValidTarget: boolean; name: string; position: Position }) {
-  return <View style={styles.playerDetails}><Text ellipsizeMode="tail" numberOfLines={1} style={[styles.name, isValidTarget && styles.validName, isHoveredTarget && styles.hoveredName]}>{name}</Text><Text style={styles.meta}>{position}</Text>{appliedCards.length > 0 && <View style={styles.appliedIcons}>{appliedCards.map((modifier) => <Ionicons color={modifier.card.accent} key={modifier.id} name={modifier.card.icon} size={14} />)}</View>}</View>;
+function PlayerDetails({ appliedCards = [], isHoveredTarget, isValidTarget, name, position, team }: { appliedCards?: AppliedModifier[]; isHoveredTarget: boolean; isValidTarget: boolean; name: string; position: Position; team: string }) {
+  const game = getGameInfo(team);
+  return <View style={styles.playerDetails}><Text ellipsizeMode="tail" numberOfLines={1} style={[styles.name, isValidTarget && styles.validName, isHoveredTarget && styles.hoveredName]}>{name}</Text><Text numberOfLines={1} style={styles.meta}><Text style={{ color: getPositionColor(position) }}>{position}</Text><Text style={styles.teamMeta}> · {team} vs {game.opponent} · {game.time}</Text></Text>{appliedCards.length > 0 && <View style={styles.appliedIcons}>{appliedCards.map((modifier) => <Ionicons color={modifier.card.accent} key={modifier.id} name={modifier.card.icon} size={14} />)}</View>}</View>;
 }
 
 const styles = StyleSheet.create({
@@ -64,6 +67,7 @@ const styles = StyleSheet.create({
   validName: { color: colors.accent },
   hoveredName: { fontSize: 15, textShadowColor: 'rgba(182, 255, 0, 0.65)', textShadowRadius: 8 },
   meta: { color: '#83A49F', fontSize: 9, fontWeight: '700', marginTop: 2 },
+  teamMeta: { color: '#BBC5C3' },
   appliedIcons: { flexDirection: 'row', gap: 3, marginTop: 3 },
   // A fixed width prevents decimal scores from wrapping into two lines.
   score: { color: colors.text, flexShrink: 0, fontSize: 12, fontWeight: '800', textAlign: 'center', width: 38 },
