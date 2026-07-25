@@ -8,6 +8,7 @@ import { useServiceData } from '../hooks/useServiceData';
 import { fantasyService } from '../services/fantasy';
 import { colors } from '../theme/colors';
 import { NewsStory } from '../types/fantasy';
+import { SwipeBackView } from '../features/ui/SwipeBackView';
 import { formatPoints } from '../utils/formatters';
 
 /** Landing page with current manager context and tappable league news. */
@@ -33,7 +34,7 @@ export function HomeScreen({ onRegisterRefresh }: { onRegisterRefresh: (refresh:
 
 /** Full article view displayed after selecting a story from the Home feed. */
 function NewsArticle({ onBack, story }: { onBack: () => void; story: NewsStory }) {
-  return <View style={styles.article}><Pressable onPress={onBack} style={styles.backButton}><Ionicons color={colors.accent} name="arrow-back" size={19} /><Text style={styles.backText}>BACK TO HOME</Text></Pressable><Text style={styles.category}>{story.category}</Text><Text style={styles.articleTitle}>{story.title}</Text><Text style={styles.time}>{story.publishedAt}</Text><Text style={styles.articleBody}>{story.body}</Text></View>;
+  return <SwipeBackView onBack={onBack} style={styles.article}><Pressable onPress={onBack} style={styles.backButton}><Ionicons color={colors.accent} name="arrow-back" size={19} /><Text style={styles.backText}>BACK TO HOME</Text></Pressable><Text style={styles.category}>{story.category}</Text><Text style={styles.articleTitle}>{story.title}</Text><Text style={styles.time}>{story.publishedAt}</Text><Text style={styles.articleBody}>{story.body}</Text></SwipeBackView>;
 }
 
 const styles = StyleSheet.create({

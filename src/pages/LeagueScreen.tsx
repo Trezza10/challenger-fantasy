@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ServiceState } from '../features/ui/ServiceState';
 import { LeagueDetail, LeagueDestination, LeagueHub } from '../features/league/LeagueViews';
+import { SwipeBackView } from '../features/ui/SwipeBackView';
 import { useServiceData } from '../hooks/useServiceData';
 import { fantasyService } from '../services/fantasy';
 import { LeagueSummary } from '../types/fantasy';
@@ -12,7 +13,8 @@ import { LeagueSummary } from '../types/fantasy';
 export function LeagueScreen({ onChatInputBlur, onChatInputFocus, onRegisterReachEnd, onRegisterRefresh, selectedLeague }: { onChatInputBlur: () => void; onChatInputFocus: () => void; onRegisterReachEnd: (handler: () => void) => () => void; onRegisterRefresh: (refresh: () => Promise<void>) => () => void; selectedLeague?: LeagueSummary | null }) {
   const [destination, setDestination] = useState<LeagueDestination | null>(null);
   const loadSelectedLeague = useCallback(() => fantasyService.getLeague(selectedLeague?.id), [selectedLeague?.id]);
-  const { data, error, isLoading, refetch } = useServiceData(loadSelectedLeague);
+  // The selected league ID is stable across navigation, so League HQ and Settings reuse the same session data.
+  const { data, error, isLoading, refetch } = useServiceData(loadSelectedLeague, `league:${selectedLeague?.id ?? 'challengers'}`);
 
   /** Registers this league-specific service request with the shared pull-to-refresh container. */
   useEffect(() => onRegisterRefresh(refetch), [onRegisterRefresh, refetch]);
@@ -21,6 +23,6 @@ export function LeagueScreen({ onChatInputBlur, onChatInputFocus, onRegisterReac
   if (!data) return <ServiceState error={error} isLoading={isLoading} />;
 
   return destination
-    ? <LeagueDetail data={data} destination={destination} isCommissioner={selectedLeague?.id === 'challengers'} leagueId={selectedLeague?.id ?? 'challengers'} onBack={() => setDestination(null)} onChatInputBlur={onChatInputBlur} onChatInputFocus={onChatInputFocus} onRegisterReachEnd={onRegisterReachEnd} />
+    ? <SwipeBackView onBack={() => setDestination(null)}><LeagueDetail data={data} destination={destination} isCommissioner={selectedLeague?.id === 'challengers'} leagueId={selectedLeague?.id ?? 'challengers'} onBack={() => setDestination(null)} onChatInputBlur={onChatInputBlur} onChatInputFocus={onChatInputFocus} onRegisterReachEnd={onRegisterReachEnd} /></SwipeBackView>
     : <LeagueHub data={data} memberCount={selectedLeague?.memberCount ?? data.memberCount} onSelect={setDestination} />;
 }

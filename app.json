@@ -4,8 +4,19 @@
     "slug": "challengers-fantasy",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/challengers-app-icon-7.png",
+    "icon": "./assets/challengers-app-icon-8.png",
     "userInterfaceStyle": "light",
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0E1514",
+          "image": "./assets/challengers-wordmark-4.png",
+          "imageWidth": 360,
+          "resizeMode": "contain"
+        }
+      ]
+    ],
     "ios": {
       "supportsTablet": true
     },
@@ -13,7 +24,7 @@
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#0E1514",
-        "foregroundImage": "./assets/challengers-app-icon-7.png",
+        "foregroundImage": "./assets/challengers-app-icon-8.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },

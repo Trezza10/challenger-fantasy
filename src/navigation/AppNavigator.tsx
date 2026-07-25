@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { StatusBar } from 'expo-status-bar';
 import { ComponentProps, useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { HandTray } from '../features/hand/HandTray';
 import { CardDetailsModal } from '../features/hand/CardDetailsModal';
 import { LeagueSelector } from '../features/league/LeagueSelector';
@@ -232,6 +232,10 @@ export function AppNavigator() {
         ? <HomeScreen key={homeViewKey} onRegisterRefresh={registerPageRefresh} />
         : <ProfileScreen onRegisterRefresh={registerPageRefresh} />;
 
+  // Keeps the branded loading view visible only while the initial league data is unavailable.
+  const isBootstrapping = (leaguesRequest.isLoading && !leaguesRequest.data) || (matchupRequest.isLoading && !matchupRequest.data);
+  if (isBootstrapping) return <StartupLoadingScreen />;
+
   return (
     <SafeAreaView style={layout.app}>
       <StatusBar style="light" />
@@ -266,7 +270,18 @@ export function AppNavigator() {
   );
 }
 
+/** In-app companion to the native splash screen while the first data requests resolve. */
+function StartupLoadingScreen() {
+  return <SafeAreaView style={styles.startupScreen}>
+    <StatusBar style="light" />
+    <Image resizeMode="contain" source={require('../../assets/challengers-wordmark-4.png')} style={styles.startupWordmark} />
+    <LoadingIndicator />
+  </SafeAreaView>;
+}
+
 const styles = StyleSheet.create({
+  startupScreen: { alignItems: 'center', backgroundColor: colors.background, flex: 1, justifyContent: 'center', paddingHorizontal: 32 },
+  startupWordmark: { height: 142, marginBottom: 24, maxWidth: 510, width: '100%' },
   chatKeyboardContent: { paddingBottom: 14 },
   scroll: { flex: 1 },
   content: { flexGrow: 1 },
