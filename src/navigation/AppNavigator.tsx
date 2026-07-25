@@ -129,6 +129,12 @@ export function AppNavigator() {
     if (activeTab === 'Matchup' || activeTab === 'Team') pageRefreshHandler.current = matchupRequest.refetch;
   }, [activeTab, matchupRequest.refetch]);
 
+  /** A shared ScrollView must not carry a long page's offset into a newly selected tab or league. */
+  useEffect(() => {
+    pageScrollRef.current?.scrollTo({ animated: false, y: 0 });
+    setIsPullingToRefresh(false);
+  }, [activeLeagueId, activeTab]);
+
   /** Checks the supplied SQL card's team and position restrictions before a play. */
   const canPlayCard = useCallback((card: PowerCard, player: MatchupPlayerData, isManagerTeam: boolean) => {
     const teamMatches = card.allowedTeam === 'SELF' ? isManagerTeam : !isManagerTeam;

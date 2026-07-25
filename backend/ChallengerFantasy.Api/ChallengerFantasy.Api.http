@@ -1,0 +1,52 @@
+@host = http://localhost:5088
+@token = paste-clerk-session-token-here
+@leagueId = challengers
+
+GET {{host}}/health
+
+###
+GET {{host}}/leagues
+Authorization: Bearer {{token}}
+
+###
+GET {{host}}/leagues/{{leagueId}}/matchup
+Authorization: Bearer {{token}}
+
+###
+GET {{host}}/leagues/{{leagueId}}/free-agents?limit=20&position=RB
+Authorization: Bearer {{token}}
+
+###
+POST {{host}}/leagues/{{leagueId}}/cards/plays
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "cardId": "ground-control",
+  "playerId": "jahmyr-gibbs"
+}
+
+###
+PUT {{host}}/leagues/{{leagueId}}/lineup
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "starters": [
+    { "slotId": "starter-0", "playerId": "jalen-hurts" },
+    { "slotId": "starter-1", "playerId": "jahmyr-gibbs" },
+    { "slotId": "starter-2", "playerId": "saquon-barkley" },
+    { "slotId": "starter-3", "playerId": "ceedee-lamb" },
+    { "slotId": "starter-4", "playerId": "justin-jefferson" },
+    { "slotId": "starter-5", "playerId": "travis-kelce" },
+    { "slotId": "starter-6", "playerId": "bijan-robinson" },
+    { "slotId": "starter-7", "playerId": "eagles-defense" },
+    { "slotId": "starter-8", "playerId": "jake-elliott" },
+    { "slotId": "starter-9", "playerId": "nick-sirianni" }
+  ],
+  "bench": [
+    { "slotId": "bench-0", "playerId": "jordan-love" },
+    { "slotId": "bench-1", "playerId": "tee-higgins" },
+    { "slotId": "bench-2", "playerId": "niners-defense" }
+  ]
+}

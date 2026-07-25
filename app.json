@@ -7,6 +7,16 @@
     "icon": "./assets/challengers-app-icon-8.png",
     "userInterfaceStyle": "light",
     "plugins": [
+      "expo-secure-store",
+      "@clerk/expo",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Challengers Fantasy to access your photos so you can choose a profile picture.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
       [
         "expo-splash-screen",
         {
