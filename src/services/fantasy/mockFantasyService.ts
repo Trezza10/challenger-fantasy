@@ -1,6 +1,7 @@
-import { HomeData, LeagueActivityEntry, LeagueData, LeagueMatchupSummary, LeagueSummary, MatchupData, MatchupPlayerData, Position, PowerCard, ProfileData, ProfileUpdate, TeamData } from '../../types/fantasy';
+import { AppliedModifier, CardClaimState, CreateLeaguePost, DraftState, HomeData, LeagueAccess, LeagueActivityEntry, LeagueData, LeagueInvitation, LeagueMatchupSummary, LeagueMember, LeaguePost, LeagueSummary, MatchupData, MatchupPlayerData, Position, PowerCard, ProfileData, ProfileUpdate, RosterLineup, TeamData, TradeOffer, TradePartner } from '../../types/fantasy';
 import { FantasyService } from './FantasyService';
 import { createMockCard, createMockInventory } from './mockCardCatalog';
+import { withMockScoreBreakdown } from '../../utils/scoring';
 
 // Static, schema-shaped data used until a backend is connected.
 const home: HomeData = {
@@ -14,13 +15,26 @@ const home: HomeData = {
   welcomeMessage: 'Your league draft begins in 3 days. Set your lineup and scout the competition.',
 };
 const team: TeamData = { rosterSpots: '10 / 10', topPlayer: 'Jalen Hurts' };
-const league: LeagueData = { currentWeek: 1, memberCount: 10, name: 'Challengers League' };
+const league: LeagueData = { currentWeek: 1, draftCompleted: true, draftStartsAt: null, maxMembers: 10, memberCount: 10, name: 'Challengers League', tradeRejectVotesRequired: 2, tradeReviewHours: 24 };
 const leagues: LeagueSummary[] = [
-  { id: 'challengers', memberCount: 10, name: 'Challengers League' },
-  { id: 'sunday-rivals', memberCount: 12, name: 'Sunday Rivals' },
-  { id: 'office-gridiron', memberCount: 8, name: 'Office Gridiron' },
+  { id: 'challengers', maxMembers: 10, memberCount: 10, name: 'Challengers League' },
+  { id: 'sunday-rivals', maxMembers: 12, memberCount: 12, name: 'Sunday Rivals' },
+  { id: 'office-gridiron', maxMembers: 8, memberCount: 8, name: 'Office Gridiron' },
 ];
+const mockLeagueAccess = new Map<string, LeagueAccess>(leagues.map((item, index) => [item.id, {
+  isCommissioner: index === 0,
+  draftCompleted: true,
+  joinCode: index === 0 ? 'CHALLENG' : `MOCK${index}CODE`,
+  leagueId: item.id,
+  memberCount: item.memberCount,
+  maxMembers: item.maxMembers,
+  name: item.name,
+  role: index === 0 ? 'commissioner' : 'member',
+}]));
 let profile: ProfileData = { avatarUrl: 'https://api.dicebear.com/10.x/adventurer-neutral/png?seed=Your%20Name', email: 'manager@challengers.app', memberSince: '2026', name: 'Your Name', username: 'yourname' };
+const mockClaimState: CardClaimState = { allowance: 2, choices: createMockInventory('weekly').slice(0, 3), claimedCount: 0, offerId: 'mock-offer', remainingClaims: 2, week: 5 };
+const mockPosts: LeaguePost[] = [];
+const mockTrades: TradeOffer[] = [];
 
 /** Static feed data, sorted newest first, used to exercise cursor pagination in the UI. */
 const activityFeed: LeagueActivityEntry[] = [
@@ -101,6 +115,8 @@ const matchup: MatchupData = {
     createMockCard('Momentum Shift', 'momentum-shift', 2),
   ],
   isLive: true,
+  maxMembers: 10,
+  memberCount: 10,
   initialModifiers: [
     // The opponent has targeted one player on the manager's team and boosted one of their own.
     { card: createMockCard('Momentum Shift', 'opponent-momentum-shift'), id: 'opponent-momentum-shift-lamb', playedBy: 'opponent', playedByName: 'Chris Harper', playerName: 'C. Lamb' },
@@ -125,6 +141,8 @@ const matchup: MatchupData = {
   ],
   rightTeam: { hand: createTeamInventory('Grid Iron Kings'), name: 'Grid Iron Kings', projectedPoints: 135.1, score: 119.7 },
   week: 5,
+  status: 'ready',
+  statusMessage: 'Matchups are ready.',
   winChance: 84,
 };
 
@@ -138,10 +156,14 @@ function createLeagueMatchupData(ownMatchup: LeagueMatchupSummary, leagueMatchup
     hand: ownMatchup.leftTeam.hand ?? createTeamInventory(ownMatchup.leftTeam.name),
     initialModifiers: ownMatchup.initialModifiers ?? [],
     isLive: ownMatchup.isLive,
+    maxMembers: 10,
+    memberCount: 10,
     leagueMatchups,
     leftTeam: ownMatchup.leftTeam,
     playerMatchups,
     rightTeam: ownMatchup.rightTeam,
+    status: 'ready',
+    statusMessage: 'Matchups are ready.',
     week,
     winChance: ownMatchup.winChance,
   };
@@ -175,9 +197,9 @@ const officeGridironMatchups: LeagueMatchupSummary[] = [
 ];
 
 const leagueDataById: Record<string, LeagueData> = {
-  challengers: { currentWeek: 5, memberCount: 10, name: 'Challengers League' },
-  'sunday-rivals': { currentWeek: 8, memberCount: 12, name: 'Sunday Rivals' },
-  'office-gridiron': { currentWeek: 3, memberCount: 8, name: 'Office Gridiron' },
+  challengers: { currentWeek: 5, draftCompleted: true, draftStartsAt: null, maxMembers: 10, memberCount: 10, name: 'Challengers League', tradeRejectVotesRequired: 2, tradeReviewHours: 24 },
+  'sunday-rivals': { currentWeek: 8, draftCompleted: true, draftStartsAt: null, maxMembers: 12, memberCount: 12, name: 'Sunday Rivals', tradeRejectVotesRequired: 2, tradeReviewHours: 24 },
+  'office-gridiron': { currentWeek: 3, draftCompleted: true, draftStartsAt: null, maxMembers: 8, memberCount: 8, name: 'Office Gridiron', tradeRejectVotesRequired: 2, tradeReviewHours: 24 },
 };
 const matchupDataByLeagueId: Record<string, MatchupData> = {
   challengers: matchup,
@@ -188,15 +210,104 @@ const matchupDataByLeagueId: Record<string, MatchupData> = {
 /** Simulates a brief network round trip so loading UI can be tested with mock data. */
 const mockNetworkDelay = () => new Promise<void>((resolve) => setTimeout(resolve, 650));
 
+function rosterForLeague(leagueId = 'challengers'): RosterLineup {
+  const data = matchupDataByLeagueId[leagueId] ?? matchup;
+  return {
+    bench: data.benchMatchups.map((entry, index) => ({ id: `bench-${index}`, kind: 'bench', player: entry.left, position: entry.left.position })),
+    starters: data.playerMatchups.map((entry, index) => ({ id: `starter-${index}`, kind: 'starter', player: entry.left, position: entry.left.position })),
+  };
+}
+
+function mockDraftState(leagueId: string): DraftState {
+  const current = leagueDataById[leagueId] ?? league;
+  return {
+    availablePlayers: matchup.playerMatchups.flatMap((pair) => [pair.left, pair.right]),
+    canCurrentUserPick: false,
+    clockEndsAt: null,
+    currentPick: 1,
+    currentPickerTeamName: null,
+    currentPickerUserId: null,
+    currentUserRoster: rosterForLeague(leagueId),
+    draftOrder: [],
+    isComplete: current.draftCompleted,
+    picks: [],
+    startsAt: current.draftStartsAt,
+    status: current.draftCompleted ? 'complete' : current.draftStartsAt ? 'scheduled' : 'unscheduled',
+    totalPicks: current.maxMembers * 13,
+  };
+}
+
 /** Mock provider returning static data that already conforms to the app's data types. */
 export const mockFantasyService: FantasyService = {
   async getHome() { await mockNetworkDelay(); return home; },
   async getLeagueActivity(_leagueId = 'challengers', cursor = 0, limit = 10) { await mockNetworkDelay(); const entries = activityFeed.slice(cursor, cursor + limit); const nextCursor = cursor + entries.length < activityFeed.length ? cursor + entries.length : null; return { entries, nextCursor }; },
   async getLeague(leagueId = 'challengers') { await mockNetworkDelay(); return leagueDataById[leagueId] ?? league; },
   async getLeagues() { await mockNetworkDelay(); return leagues; },
-  async getMatchup(leagueId = 'challengers') { await mockNetworkDelay(); return matchupDataByLeagueId[leagueId] ?? matchup; },
+  async createLeague(name: string, _teamName: string, maxMembers: number) {
+    await mockNetworkDelay();
+    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const access: LeagueAccess = { draftCompleted: false, isCommissioner: true, joinCode: `MOCK${Date.now().toString().slice(-4)}`, leagueId: id, maxMembers, memberCount: 1, name, role: 'commissioner' };
+    leagues.push({ id, maxMembers, memberCount: 1, name });
+    mockLeagueAccess.set(id, access);
+    matchupDataByLeagueId[id] = matchup;
+    return access;
+  },
+  async createLeagueInvitation(leagueId: string, email?: string) {
+    await mockNetworkDelay();
+    return { email: email || null, expiresAt: new Date(Date.now() + 604800000).toISOString(), id: `${leagueId}-${Date.now()}`, inviteUrl: `challengerfantasy://join?token=mock-${leagueId}`, leagueId, status: 'pending' } satisfies LeagueInvitation;
+  },
+  async completeDraft(leagueId: string) { await mockNetworkDelay(); const current = leagueDataById[leagueId]; if (current) leagueDataById[leagueId] = { ...current, draftCompleted: true }; },
+  async getCardClaim(leagueId: string) { await mockNetworkDelay(); return (leagueDataById[leagueId] ?? league).draftCompleted ? mockClaimState : { allowance: 0, choices: [], claimedCount: 0, offerId: null, remainingClaims: 0, week: (leagueDataById[leagueId] ?? league).currentWeek }; },
+  async claimCard(leagueId: string, _offerId: string, _cardId: string) { await mockNetworkDelay(); if (!(leagueDataById[leagueId] ?? league).draftCompleted) throw new Error('Weekly cards are locked until the league draft is complete.'); mockClaimState.claimedCount += 1; mockClaimState.remainingClaims -= 1; return { ...mockClaimState }; },
+  async getDraft(leagueId: string) { await mockNetworkDelay(); return mockDraftState(leagueId); },
+  async makeDraftPick(leagueId: string, _playerId: string) { await mockNetworkDelay(); return mockDraftState(leagueId); },
+  async scheduleDraft(leagueId: string, startsAt: string) { await mockNetworkDelay(); const current = leagueDataById[leagueId] ?? league; leagueDataById[leagueId] = { ...current, draftStartsAt: startsAt }; return mockDraftState(leagueId); },
+  async getLeagueAccess(leagueId: string) { await mockNetworkDelay(); return mockLeagueAccess.get(leagueId) ?? mockLeagueAccess.get('challengers')!; },
+  async getLeagueMembers(_leagueId: string) {
+    await mockNetworkDelay();
+    return [{ email: 'manager@example.com', isCurrentUser: true, losses: 0, managerName: 'Mock Manager', pointsAgainst: 0, pointsFor: 0, rank: 1, role: 'commissioner', teamName: 'Mock Team', ties: 0, userId: 'mock-user', wins: 0 }] satisfies LeagueMember[];
+  },
+  async getLeaguePosts(_leagueId: string) { await mockNetworkDelay(); return mockPosts; },
+  async createLeaguePost(_leagueId: string, post: CreateLeaguePost) { await mockNetworkDelay(); const created = { ...post, authorName: 'Mock Manager', createdAt: new Date().toISOString(), id: `post-${Date.now()}`, imageDataUrl: post.imageDataUrl ?? null, imagePosition: post.imagePosition ?? null, userId: 'mock-user' } satisfies LeaguePost; mockPosts.unshift(created); return created; },
+  async joinLeague(codeOrToken: string, _teamName?: string) { await mockNetworkDelay(); return mockLeagueAccess.get(codeOrToken) ?? mockLeagueAccess.get('challengers')!; },
+  async updateLeagueSize(leagueId: string, maxMembers: number) { await mockNetworkDelay(); const current = leagueDataById[leagueId] ?? league; const updated = { ...current, maxMembers }; leagueDataById[leagueId] = updated; return updated; },
+  async updateLeagueSettings(leagueId: string, settings: { tradeRejectVotesRequired?: number; tradeReviewHours?: number }) { await mockNetworkDelay(); const current = leagueDataById[leagueId] ?? league; const updated = { ...current, ...settings }; leagueDataById[leagueId] = updated; return updated; },
+  async getTrades(_leagueId: string) { await mockNetworkDelay(); return mockTrades; },
+  async getTradePartners(leagueId: string) {
+    await mockNetworkDelay();
+    const data = matchupDataByLeagueId[leagueId] ?? matchup;
+    const roster = rosterForLeague(leagueId);
+    const opponentSlots = [...data.playerMatchups.map((pair, index) => ({ id: `starter-${index}`, kind: 'starter' as const, player: pair.right, position: pair.right.position })), ...data.benchMatchups.map((pair, index) => ({ id: `bench-${index}`, kind: 'bench' as const, player: pair.right, position: pair.right.position }))];
+    return [
+      { hand: data.hand, roster, teamName: data.leftTeam.name, userId: 'mock-user' },
+      { hand: data.rightTeam.hand ?? [], roster: { starters: opponentSlots.filter((slot) => slot.kind === 'starter'), bench: opponentSlots.filter((slot) => slot.kind === 'bench') }, teamName: data.rightTeam.name, userId: 'mock-opponent' },
+    ] satisfies TradePartner[];
+  },
+  async createTrade(_leagueId: string, trade: { offeredCardIds: string[]; offeredPlayerIds: string[]; requestedCardIds: string[]; requestedPlayerIds: string[]; toUserId: string }) { await mockNetworkDelay(); const created: TradeOffer = { ...trade, createdAt: new Date().toISOString(), fromUserId: 'mock-user', hasCurrentUserRejected: false, id: `trade-${Date.now()}`, rejectVotes: 0, rejectVotesRequired: 2, reviewEndsAt: null, status: 'Pending' }; mockTrades.unshift(created); return created; },
+  async resolveTrade(_leagueId: string, tradeId: string, decision: 'accept' | 'reject' | 'cancel') { await mockNetworkDelay(); const trade = mockTrades.find((item) => item.id === tradeId)!; trade.status = decision === 'accept' ? 'LeagueReview' : decision === 'reject' ? 'Rejected' : 'Cancelled'; trade.reviewEndsAt = decision === 'accept' ? new Date(Date.now() + 86_400_000).toISOString() : null; return { ...trade }; },
+  async voteTrade(_leagueId: string, tradeId: string, decision: 'approve' | 'reject') { await mockNetworkDelay(); const trade = mockTrades.find((item) => item.id === tradeId)!; trade.hasCurrentUserRejected = decision === 'reject'; trade.rejectVotes = decision === 'reject' ? 1 : 0; return { ...trade }; },
+  async getMatchup(leagueId = 'challengers') {
+    await mockNetworkDelay();
+    const data = matchupDataByLeagueId[leagueId] ?? matchup;
+    const hydratePairs = (pairs: typeof data.playerMatchups) => pairs.map((pair) => ({ ...pair, left: withMockScoreBreakdown(pair.left), right: withMockScoreBreakdown(pair.right) }));
+    return { ...data, benchMatchups: hydratePairs(data.benchMatchups), playerMatchups: hydratePairs(data.playerMatchups), leagueMatchups: data.leagueMatchups.map((entry) => ({ ...entry, benchMatchups: entry.benchMatchups ? hydratePairs(entry.benchMatchups) : entry.benchMatchups, playerMatchups: entry.playerMatchups ? hydratePairs(entry.playerMatchups) : entry.playerMatchups })) };
+  },
+  async getRoster(leagueId = 'challengers') {
+    await mockNetworkDelay();
+    const roster = rosterForLeague(leagueId);
+    return { bench: roster.bench.map((slot) => ({ ...slot, player: withMockScoreBreakdown(slot.player) })), starters: roster.starters.map((slot) => ({ ...slot, player: withMockScoreBreakdown(slot.player) })) };
+  },
   async getProfile() { await mockNetworkDelay(); return profile; },
   async getTeam() { await mockNetworkDelay(); return team; },
+  async playCard(_leagueId: string, cardId: string, playerId: string) {
+    await mockNetworkDelay();
+    const card = matchup.hand.find((item) => item.id === cardId) ?? matchup.hand[0];
+    const players = matchup.playerMatchups.flatMap((entry) => [entry.left, entry.right]).concat(matchup.benchMatchups.flatMap((entry) => [entry.left, entry.right]));
+    const player = players.find((item) => item.id === playerId || item.name === playerId) ?? players[0];
+    return { card, id: `${cardId}-${Date.now()}`, playedBy: 'manager', playedByName: 'You', playerId, playerName: player.name } satisfies AppliedModifier;
+  },
+  async removeCard() { await mockNetworkDelay(); },
+  async saveLineup(_leagueId: string, roster: RosterLineup) { await mockNetworkDelay(); return roster; },
   async updateProfile(update: ProfileUpdate) { await mockNetworkDelay(); profile = { ...profile, ...update, name: update.username || profile.name }; return profile; },
   async updatePassword(_currentPassword: string, _newPassword: string) { await mockNetworkDelay(); },
 };

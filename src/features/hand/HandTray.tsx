@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Dimensions, PanResponder, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRef, useState } from 'react';
 import { colors } from '../../theme/colors';
 import { PowerCard } from '../../types/fantasy';
@@ -82,20 +82,29 @@ export function HandTray({ cards, isOverValidTarget, onCardDragEnd, onCardDragMo
   };
 
   return (
-    <View style={[styles.tray, { height }]}>
-      <View {...panResponder.panHandlers} accessibilityRole="button" accessibilityLabel="Toggle your hand" style={styles.handle}>
-        <View style={styles.grabber} />
-        <Text style={styles.title}>INVENTORY ({cards.reduce((total, card) => total + card.quantity, 0)})</Text>
-        <Ionicons color={colors.textSecondary} name={isCollapsed ? 'chevron-up' : 'chevron-down'} size={18} />
-      </View>
-
-      {(!isCollapsed || activeCardId) && <>
-        <View style={styles.cards}>
-          {cards.map((card) => <HandCard card={card} hidden={isCollapsed && card.id !== activeCardId} isOverValidTarget={card.id === activeCardId && isOverValidTarget} key={card.id} lift={card.id === activeCardId ? activeCardLift : 0} onDragEnd={finishCardDrag} onDragMove={onCardDragMove} onDragStart={beginCardDrag} onDrop={onCardDrop} onPress={onCardPress} />)}
+    <>
+      {!isCollapsed && !activeCardId && (
+        <Pressable
+          accessibilityLabel="Close card inventory"
+          onPress={() => setTrayHeight(SNAP_POINTS.collapsed)}
+          style={styles.dismissLayer}
+        />
+      )}
+      <View style={[styles.tray, { height }]}>
+        <View {...panResponder.panHandlers} accessibilityRole="button" accessibilityLabel="Toggle your hand" style={styles.handle}>
+          <View style={styles.grabber} />
+          <Text style={styles.title}>INVENTORY ({cards.reduce((total, card) => total + card.quantity, 0)})</Text>
+          <Ionicons color={colors.textSecondary} name={isCollapsed ? 'chevron-up' : 'chevron-down'} size={18} />
         </View>
-        {!activeCardId && <Text style={styles.hint}>Drag a card onto a player, or drag this header up or down</Text>}
-      </>}
-    </View>
+
+        {(!isCollapsed || activeCardId) && <>
+          <View style={styles.cards}>
+            {cards.map((card) => <HandCard card={card} hidden={isCollapsed && card.id !== activeCardId} isOverValidTarget={card.id === activeCardId && isOverValidTarget} key={card.id} lift={card.id === activeCardId ? activeCardLift : 0} onDragEnd={finishCardDrag} onDragMove={onCardDragMove} onDragStart={beginCardDrag} onDrop={onCardDrop} onPress={onCardPress} />)}
+          </View>
+          {!activeCardId && <Text style={styles.hint}>Drag a card onto a player, or drag this header up or down</Text>}
+        </>}
+      </View>
+    </>
   );
 }
 
@@ -130,12 +139,14 @@ function HandCard({ card, hidden, isOverValidTarget, lift, onDragEnd, onDragMove
     onPanResponderRelease: (_, gesture) => {
       setPointerX(screenCenterX); setTranslation({ x: 0, y: 0 });
       setIsDragging(false);
-      onDragEnd();
       if (Math.abs(gesture.dx) < 3 && Math.abs(gesture.dy) < 3) {
+        onDragEnd();
         onPress(card);
         return;
       }
       onDrop(card, gesture.moveX, gesture.moveY);
+      // Preserve the measured target through onDrop, then clear drag state.
+      onDragEnd();
     },
     onPanResponderTerminate: () => { setPointerX(screenCenterX); setTranslation({ x: 0, y: 0 }); setIsDragging(false); onDragEnd(); },
   })).current;
@@ -152,6 +163,7 @@ function HandCard({ card, hidden, isOverValidTarget, lift, onDragEnd, onDragMove
 }
 
 const styles = StyleSheet.create({
+  dismissLayer: { bottom: 0, left: 0, position: 'absolute', right: 0, top: 0, zIndex: 9 },
   tray: { backgroundColor: '#0A1010', borderColor: '#263330', borderRadius: 16, borderWidth: 1, elevation: 10, overflow: 'visible', zIndex: 10 },
   handle: { alignItems: 'center', flexDirection: 'row', height: SNAP_POINTS.collapsed, justifyContent: 'space-between', paddingHorizontal: 16 },
   grabber: { backgroundColor: '#4A5654', borderRadius: 3, height: 4, left: '50%', marginLeft: -18, position: 'absolute', top: 7, width: 36 },

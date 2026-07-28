@@ -14,12 +14,54 @@ public sealed class LeaguesController(IFantasyService service, ICurrentUser curr
     [HttpGet]
     public ActionResult<IReadOnlyList<LeagueSummaryDto>> GetAll() => Ok(service.GetLeagues(currentUser.UserId));
 
+    [HttpPost]
+    public ActionResult<LeagueAccessDto> Create(CreateLeagueRequest request)
+    {
+        var result = service.CreateLeague(currentUser.UserId, request.ManagerName ?? currentUser.DisplayName, request.Email ?? currentUser.Email, request);
+        return CreatedAtAction(nameof(Get), new { leagueId = result.LeagueId }, result);
+    }
+
+    [HttpGet("join/{codeOrToken}")]
+    public ActionResult<LeaguePreviewDto> Preview(string codeOrToken) => Ok(service.PreviewLeague(codeOrToken));
+
+    [HttpPost("join")]
+    public ActionResult<LeagueAccessDto> Join(JoinLeagueRequest request) =>
+        Ok(service.JoinLeague(currentUser.UserId, request.ManagerName ?? currentUser.DisplayName, request.Email ?? currentUser.Email, request));
+
     [HttpGet("{leagueId}")]
     public ActionResult<LeagueDto> Get(string leagueId) => Ok(service.GetLeague(leagueId, currentUser.UserId));
 
     [HttpPatch("{leagueId}/settings")]
-    [Authorize(Policy = Policies.Commissioner)]
-    public ActionResult<LeagueDto> Update(string leagueId, LeagueSettingsRequest request) => Ok(service.UpdateLeague(leagueId, request));
+    public ActionResult<LeagueDto> Update(string leagueId, LeagueSettingsRequest request) => Ok(service.UpdateLeague(leagueId, currentUser.UserId, request));
+
+    [HttpGet("{leagueId}/access")]
+    public ActionResult<LeagueAccessDto> GetAccess(string leagueId) => Ok(service.GetLeagueAccess(leagueId, currentUser.UserId));
+
+    [HttpGet("{leagueId}/members")]
+    public ActionResult<IReadOnlyList<LeagueMemberDto>> GetMembers(string leagueId) =>
+        Ok(service.GetLeagueMembers(leagueId, currentUser.UserId));
+
+    [HttpGet("{leagueId}/posts")]
+    public ActionResult<IReadOnlyList<LeaguePostDto>> GetPosts(string leagueId) =>
+        Ok(service.GetLeaguePosts(leagueId, currentUser.UserId));
+
+    [HttpPost("{leagueId}/posts")]
+    public ActionResult<LeaguePostDto> CreatePost(string leagueId, CreateLeaguePostRequest request)
+    {
+        var result = service.CreateLeaguePost(leagueId, currentUser.UserId, request);
+        return Created($"/leagues/{leagueId}/posts/{result.Id}", result);
+    }
+
+    [HttpGet("{leagueId}/invitations")]
+    public ActionResult<IReadOnlyList<LeagueInvitationDto>> GetInvitations(string leagueId) =>
+        Ok(service.GetLeagueInvitations(leagueId, currentUser.UserId));
+
+    [HttpPost("{leagueId}/invitations")]
+    public ActionResult<LeagueInvitationDto> Invite(string leagueId, CreateLeagueInvitationRequest request)
+    {
+        var result = service.CreateLeagueInvitation(leagueId, currentUser.UserId, request);
+        return Created($"/leagues/{leagueId}/invitations/{result.Id}", result);
+    }
 
     [HttpGet("{leagueId}/activity")]
     public ActionResult<ActivityPageDto> GetActivity(string leagueId, [FromQuery] int cursor = 0, [FromQuery] int limit = 10) =>
@@ -41,6 +83,14 @@ public sealed class LeaguesController(IFantasyService service, ICurrentUser curr
         var result = service.PlayCard(leagueId, currentUser.UserId, request);
         return CreatedAtAction(nameof(GetMatchup), new { leagueId }, result);
     }
+
+    [HttpGet("{leagueId}/cards/claims/current")]
+    public ActionResult<CardClaimStateDto> GetCardClaim(string leagueId) =>
+        Ok(service.GetCardClaim(leagueId, currentUser.UserId));
+
+    [HttpPost("{leagueId}/cards/claims")]
+    public ActionResult<CardClaimStateDto> ClaimCard(string leagueId, ClaimCardRequest request) =>
+        Ok(service.ClaimCard(leagueId, currentUser.UserId, request));
 
     [HttpDelete("{leagueId}/cards/plays/{playId}")]
     public IActionResult RemoveCard(string leagueId, string playId)
@@ -79,6 +129,10 @@ public sealed class LeaguesController(IFantasyService service, ICurrentUser curr
     public ActionResult<IReadOnlyList<TradeOfferDto>> GetTrades(string leagueId) =>
         Ok(service.GetTrades(leagueId, currentUser.UserId));
 
+    [HttpGet("{leagueId}/trades/partners")]
+    public ActionResult<IReadOnlyList<TradePartnerDto>> GetTradePartners(string leagueId) =>
+        Ok(service.GetTradePartners(leagueId, currentUser.UserId));
+
     [HttpPost("{leagueId}/trades")]
     public ActionResult<TradeOfferDto> CreateTrade(string leagueId, CreateTradeRequest request)
     {
@@ -89,6 +143,10 @@ public sealed class LeaguesController(IFantasyService service, ICurrentUser curr
     [HttpPatch("{leagueId}/trades/{tradeId}")]
     public ActionResult<TradeOfferDto> ResolveTrade(string leagueId, string tradeId, ResolveTradeRequest request) =>
         Ok(service.ResolveTrade(leagueId, currentUser.UserId, tradeId, request));
+
+    [HttpPost("{leagueId}/trades/{tradeId}/votes")]
+    public ActionResult<TradeOfferDto> VoteTrade(string leagueId, string tradeId, TradeVoteRequest request) =>
+        Ok(service.VoteTrade(leagueId, currentUser.UserId, tradeId, request));
 
     [HttpGet("{leagueId}/chat")]
     public ActionResult<IReadOnlyList<ChatMessageDto>> GetMessages(string leagueId, [FromQuery] int limit = 50) =>
@@ -104,7 +162,15 @@ public sealed class LeaguesController(IFantasyService service, ICurrentUser curr
     [HttpGet("{leagueId}/draft")]
     public ActionResult<DraftStateDto> GetDraft(string leagueId) => Ok(service.GetDraft(leagueId, currentUser.UserId));
 
+    [HttpPut("{leagueId}/draft/schedule")]
+    public ActionResult<DraftStateDto> ScheduleDraft(string leagueId, ScheduleDraftRequest request) =>
+        Ok(service.ScheduleDraft(leagueId, currentUser.UserId, request));
+
     [HttpPost("{leagueId}/draft/picks")]
     public ActionResult<DraftStateDto> MakeDraftPick(string leagueId, DraftPickRequest request) =>
         Ok(service.MakeDraftPick(leagueId, currentUser.UserId, request));
+
+    [HttpPost("{leagueId}/draft/complete")]
+    public ActionResult<DraftStateDto> CompleteDraft(string leagueId) =>
+        Ok(service.CompleteDraft(leagueId, currentUser.UserId));
 }

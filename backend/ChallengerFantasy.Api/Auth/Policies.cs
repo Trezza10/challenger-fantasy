@@ -42,6 +42,8 @@ public static class ClerkClaims
 public interface ICurrentUser
 {
     string UserId { get; }
+    string DisplayName { get; }
+    string? Email { get; }
 }
 
 public sealed class HttpCurrentUser(IHttpContextAccessor accessor, IOptions<ApiAuthOptions> options) : ICurrentUser
@@ -51,4 +53,12 @@ public sealed class HttpCurrentUser(IHttpContextAccessor accessor, IOptions<ApiA
         ?? (!options.Value.Enabled
             ? options.Value.DevelopmentUserId
             : throw new UnauthorizedAccessException("The authenticated token has no subject claim."));
+
+    public string DisplayName =>
+        accessor.HttpContext?.User.FindFirstValue("name")
+        ?? accessor.HttpContext?.User.FindFirstValue("username")
+        ?? accessor.HttpContext?.User.FindFirstValue("given_name")
+        ?? (!options.Value.Enabled ? "Development Manager" : "Manager");
+
+    public string? Email => accessor.HttpContext?.User.FindFirstValue("email");
 }

@@ -1,10 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { ComponentProps, useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { colors } from '../../theme/colors';
+import { SCORING_RULE_SECTIONS } from '../../utils/scoring';
 import { getPositionColor, getPositionFill } from '../../theme/positions';
 import { fantasyService } from '../../services/fantasy';
-import { LeagueActivityEntry, LeagueData } from '../../types/fantasy';
+import { DraftState, LeagueActivityEntry, LeagueData, LeagueMember, MatchupPlayerData, PowerCard, TradeOffer } from '../../types/fantasy';
+import { DraftDateTimePicker } from './DraftDateTimePicker';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 export type LeagueDestination = 'activity' | 'chat' | 'draft' | 'members' | 'playoffs' | 'rules' | 'settings' | 'standings' | 'trades';
@@ -34,31 +36,421 @@ const mockLastNames = ['Hurts', 'Williams', 'Daniels', 'Jackson', 'Herbert', 'Ro
 const nflTeams = ['PHI', 'BUF', 'BAL', 'DET', 'SF', 'DAL', 'KC', 'MIN', 'CIN', 'GB'];
 
 /** Main league page: a league snapshot followed by each available league tool. */
-export function LeagueHub({ data, memberCount, onSelect }: { data: LeagueData; memberCount: number; onSelect: (destination: LeagueDestination) => void }) {
+export function LeagueHub({ currentRank, data, memberCount, onSelect }: { currentRank: number | null; data: LeagueData; memberCount: number; onSelect: (destination: LeagueDestination) => void }) {
   return <View style={styles.screen}>
-    <View style={styles.heroCard}><Text style={styles.eyebrow}>LEAGUE HQ</Text><Text style={styles.leagueName}>{data.name}</Text><View style={styles.stats}><LeagueStat label="MEMBERS" value={String(memberCount)} /><LeagueStat label="CURRENT WEEK" value={String(data.currentWeek)} /><LeagueStat label="YOUR RANK" value="#3" /></View></View>
+    <View style={styles.heroCard}><Text style={styles.eyebrow}>LEAGUE HQ</Text><Text style={styles.leagueName}>{data.name}</Text><View style={styles.stats}><LeagueStat label="MEMBERS" value={String(memberCount)} /><LeagueStat label="CURRENT WEEK" value={String(data.currentWeek)} /><LeagueStat label="YOUR RANK" value={currentRank ? `#${currentRank}` : '—'} /></View></View>
     <Text style={styles.sectionTitle}>LEAGUE TOOLS</Text>
     <View style={styles.toolGrid}>{leagueHubItems.map((item) => <Pressable key={item.id} onPress={() => onSelect(item.id)} style={({ pressed }) => [styles.toolCard, pressed && styles.pressed]}><View style={styles.toolIcon}><Ionicons color={colors.accent} name={item.icon} size={21} /></View><View style={styles.toolText}><Text style={styles.toolTitle}>{item.title}</Text><Text numberOfLines={2} style={styles.toolDescription}>{item.description}</Text></View><Ionicons color={colors.muted} name="chevron-forward" size={17} /></Pressable>)}</View>
   </View>;
 }
 
 /** Simple reusable back page used until each league feature has a dedicated service and workflow. */
-export function LeagueDetail({ data, destination, isCommissioner, leagueId, onBack, onChatInputBlur, onChatInputFocus, onRegisterReachEnd }: { data: LeagueData; destination: LeagueDestination; isCommissioner: boolean; leagueId: string; onBack: () => void; onChatInputBlur: () => void; onChatInputFocus: () => void; onRegisterReachEnd: (handler: () => void) => () => void }) {
+export function LeagueDetail({ data, destination, isCommissioner, leagueId, members, onBack, onChatInputBlur, onChatInputFocus, onRegisterReachEnd }: { data: LeagueData; destination: LeagueDestination; isCommissioner: boolean; leagueId: string; members: LeagueMember[]; onBack: () => void; onChatInputBlur: () => void; onChatInputFocus: () => void; onRegisterReachEnd: (handler: () => void) => () => void }) {
   const item = leagueHubItems.find((entry) => entry.id === destination)!;
   if (destination === 'activity') return <LeagueActivity leagueId={leagueId} onBack={onBack} onRegisterReachEnd={onRegisterReachEnd} />;
   if (destination === 'chat') return <LeagueChat data={data} onBack={onBack} onInputBlur={onChatInputBlur} onInputFocus={onChatInputFocus} />;
-  if (destination === 'draft') return <DraftBoard data={data} onBack={onBack} />;
+  if (destination === 'draft') return <DraftBoard currentUserId={members.find((member) => member.isCurrentUser)?.userId ?? null} data={data} isCommissioner={isCommissioner} leagueId={leagueId} onBack={onBack} />;
+  if (destination === 'trades') return <TradeCenter data={data} leagueId={leagueId} members={members} onBack={onBack} />;
+  if (destination === 'settings') return <LeagueSettings data={data} isCommissioner={isCommissioner} leagueId={leagueId} onBack={onBack} />;
+  if (destination === 'playoffs') return <LeaguePlayoffs data={data} leagueId={leagueId} members={members} onBack={onBack} />;
   if (destination === 'rules') return <LeagueRules data={data} onBack={onBack} />;
+  if (destination === 'members' || destination === 'standings') return <LeaguePeople data={data} destination={destination} members={members} onBack={onBack} />;
   const detail = getDetailContent(destination, data, isCommissioner);
   return <View style={styles.screen}><Pressable onPress={onBack} style={styles.backButton}><Ionicons color={colors.text} name="chevron-back" size={20} /><Text style={styles.backText}>LEAGUE HQ</Text></Pressable><View style={styles.detailHeader}><View style={styles.detailIcon}><Ionicons color={colors.accent} name={item.icon} size={27} /></View><View><Text style={styles.eyebrow}> {data.name.toUpperCase()}</Text><Text style={styles.detailTitle}>{item.title}</Text></View></View><View style={styles.detailCard}>{detail.map((row) => <View key={row.label} style={styles.detailRow}><View style={styles.detailCopy}><Text style={styles.detailLabel}>{row.label}</Text><Text style={styles.detailValue}>{row.value}</Text></View>{row.badge && <Text style={[styles.badge, row.badge === 'COMMISSIONER' && styles.commissionerBadge]}>{row.badge}</Text>}</View>)}</View></View>;
 }
 
+type PlayoffTeam = { name: string; score?: number; seed?: number };
+type PlayoffGame = { id: string; teams: [PlayoffTeam, PlayoffTeam] };
+type PlayoffRound = { games: PlayoffGame[]; title: string; week: number };
+
+/** Standings-seeded bracket that scales from two-team finals through an eight-team field. */
+function LeaguePlayoffs({ data, leagueId, members, onBack }: { data: LeagueData; leagueId: string; members: LeagueMember[]; onBack: () => void }) {
+  const { width } = useWindowDimensions();
+  const [scores, setScores] = useState<Record<string, number>>({});
+  const sorted = [...members].sort((a, b) => a.rank - b.rank);
+  const fieldSize = getPlayoffFieldSize(sorted.length);
+  const qualifiers = sorted.slice(0, fieldSize).map((member, index) => ({ name: member.teamName, seed: index + 1 }));
+  const rounds = buildPlayoffRounds(qualifiers).map((round) => ({
+    ...round,
+    games: round.games.map((game) => ({ ...game, teams: game.teams.map((team) => ({ ...team, score: round.week === data.currentWeek ? scores[team.name] : undefined })) as [PlayoffTeam, PlayoffTeam] })),
+  }));
+
+  useEffect(() => {
+    let active = true;
+    fantasyService.getMatchup(leagueId).then((matchup) => {
+      if (!active) return;
+      const next: Record<string, number> = {};
+      matchup.leagueMatchups.forEach((entry) => { next[entry.leftTeam.name] = entry.leftTeam.score; next[entry.rightTeam.name] = entry.rightTeam.score; });
+      setScores(next);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [leagueId]);
+
+  return <View style={styles.screen}>
+    <BackButton onBack={onBack} />
+    <View style={styles.detailHeader}><View style={styles.detailIcon}><Ionicons color={colors.accent} name="trophy-outline" size={27} /></View><View><Text style={styles.eyebrow}>{data.name.toUpperCase()}</Text><Text style={styles.detailTitle}>Playoffs</Text></View></View>
+    <View style={playoffStyles.summary}><Text style={styles.rulesIntroTitle}>{fieldSize}-TEAM PLAYOFF</Text><Text style={styles.rulesIntroCopy}>{sorted.length} league managers · top {fieldSize} qualify{fieldSize === 6 ? ' · top two seeds receive byes' : ''}</Text></View>
+    {sorted.length < 2 ? <Text style={styles.emptyPeople}>At least two managers are required to generate a playoff bracket.</Text> : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[playoffStyles.bracket, width >= 900 && playoffStyles.wideBracket]}>
+      {rounds.map((round, roundIndex) => <View key={round.title} style={[playoffStyles.round, { width: width >= 900 ? Math.max(230, (Math.min(width, 1080) - 76) / rounds.length) : 220 }]}>
+        <View style={playoffStyles.roundHeader}><Text style={playoffStyles.roundTitle}>{round.title}</Text><Text style={playoffStyles.roundWeek}>WEEK {round.week}</Text></View>
+        <View style={[playoffStyles.games, roundIndex > 0 && playoffStyles.laterRound]}>{round.games.map((game) => <PlayoffGameCard game={game} isCurrentWeek={round.week === data.currentWeek} key={game.id} />)}</View>
+      </View>)}
+    </ScrollView>}
+    <Text style={playoffStyles.note}>Scores appear from live league matchups during each playoff week. Future games remain pending until their teams advance.</Text>
+  </View>;
+}
+
+function PlayoffGameCard({ game, isCurrentWeek }: { game: PlayoffGame; isCurrentWeek: boolean }) {
+  return <View style={[playoffStyles.game, isCurrentWeek && playoffStyles.currentGame]}>{game.teams.map((team, index) => <View key={`${game.id}-${index}`} style={[playoffStyles.teamRow, index === 1 && playoffStyles.secondTeam]}><View style={playoffStyles.seed}><Text style={playoffStyles.seedText}>{team.seed ?? '—'}</Text></View><Text numberOfLines={1} style={[playoffStyles.teamName, !team.seed && playoffStyles.placeholder]}>{team.name}</Text><Text style={playoffStyles.teamScore}>{team.score === undefined ? '—' : team.score.toFixed(1)}</Text></View>)}</View>;
+}
+
+function getPlayoffFieldSize(memberCount: number) {
+  if (memberCount < 2) return 0;
+  if (memberCount <= 3) return 2;
+  if (memberCount <= 5) return 4;
+  if (memberCount <= 7) return 6;
+  return Math.min(8, memberCount);
+}
+
+function buildPlayoffRounds(teams: PlayoffTeam[]): PlayoffRound[] {
+  const pending = (name: string): PlayoffTeam => ({ name });
+  if (teams.length === 2) return [{ title: 'CHAMPIONSHIP', week: 17, games: [{ id: 'final', teams: [teams[0], teams[1]] }] }];
+  if (teams.length === 4) return [
+    { title: 'SEMIFINALS', week: 16, games: [{ id: 'semi-1', teams: [teams[0], teams[3]] }, { id: 'semi-2', teams: [teams[1], teams[2]] }] },
+    { title: 'CHAMPIONSHIP', week: 17, games: [{ id: 'final', teams: [pending('Winner · Semifinal 1'), pending('Winner · Semifinal 2')] }] },
+  ];
+  if (teams.length === 6) return [
+    { title: 'WILD CARD', week: 15, games: [{ id: 'wild-1', teams: [teams[2], teams[5]] }, { id: 'wild-2', teams: [teams[3], teams[4]] }] },
+    { title: 'SEMIFINALS', week: 16, games: [{ id: 'semi-1', teams: [teams[0], pending('Lowest remaining seed')] }, { id: 'semi-2', teams: [teams[1], pending('Highest remaining seed')] }] },
+    { title: 'CHAMPIONSHIP', week: 17, games: [{ id: 'final', teams: [pending('Winner · Semifinal 1'), pending('Winner · Semifinal 2')] }] },
+  ];
+  return [
+    { title: 'QUARTERFINALS', week: 15, games: [{ id: 'quarter-1', teams: [teams[0], teams[7]] }, { id: 'quarter-2', teams: [teams[3], teams[4]] }, { id: 'quarter-3', teams: [teams[1], teams[6]] }, { id: 'quarter-4', teams: [teams[2], teams[5]] }] },
+    { title: 'SEMIFINALS', week: 16, games: [{ id: 'semi-1', teams: [pending('Winner · Quarterfinal 1'), pending('Winner · Quarterfinal 2')] }, { id: 'semi-2', teams: [pending('Winner · Quarterfinal 3'), pending('Winner · Quarterfinal 4')] }] },
+    { title: 'CHAMPIONSHIP', week: 17, games: [{ id: 'final', teams: [pending('Winner · Semifinal 1'), pending('Winner · Semifinal 2')] }] },
+  ];
+}
+
+/** Player/card offer composer plus recipient actions and league rejection voting. */
+function TradeCenter({ data, leagueId, members, onBack }: { data: LeagueData; leagueId: string; members: LeagueMember[]; onBack: () => void }) {
+  const current = members.find((member) => member.isCurrentUser);
+  const targets = members.filter((member) => !member.isCurrentUser);
+  const [targetId, setTargetId] = useState(targets[0]?.userId ?? '');
+  const [trades, setTrades] = useState<TradeOffer[]>([]);
+  const [ownPlayers, setOwnPlayers] = useState<MatchupPlayerData[]>([]);
+  const [targetPlayers, setTargetPlayers] = useState<MatchupPlayerData[]>([]);
+  const [ownCards, setOwnCards] = useState<PowerCard[]>([]);
+  const [targetCards, setTargetCards] = useState<PowerCard[]>([]);
+  const [leaguePlayers, setLeaguePlayers] = useState<MatchupPlayerData[]>([]);
+  const [leagueCards, setLeagueCards] = useState<PowerCard[]>([]);
+  const [offeredPlayers, setOfferedPlayers] = useState<string[]>([]);
+  const [requestedPlayers, setRequestedPlayers] = useState<string[]>([]);
+  const [offeredCards, setOfferedCards] = useState<string[]>([]);
+  const [requestedCards, setRequestedCards] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
+  const [selectedTrade, setSelectedTrade] = useState<TradeOffer | null>(null);
+
+  const refresh = useCallback(async () => {
+    const [nextTrades, nextPartners] = await Promise.all([fantasyService.getTrades(leagueId), fantasyService.getTradePartners(leagueId)]);
+    setTrades(nextTrades);
+    setLeaguePlayers(nextPartners.flatMap((partner) => [...partner.roster.starters, ...partner.roster.bench].map((slot) => slot.player)));
+    setLeagueCards(nextPartners.flatMap((partner) => partner.hand));
+    const own = nextPartners.find((partner) => partner.userId === current?.userId);
+    const selected = nextPartners.find((partner) => partner.userId === targetId);
+    setOwnPlayers(own ? [...own.roster.starters, ...own.roster.bench].map((slot) => slot.player) : []);
+    setOwnCards(own?.hand ?? []);
+    setTargetPlayers(selected ? [...selected.roster.starters, ...selected.roster.bench].map((slot) => slot.player) : []);
+    setTargetCards(selected?.hand ?? []);
+  }, [current?.userId, leagueId, targetId]);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  async function submit() {
+    if (!targetId) return;
+    setBusy(true);
+    try {
+      await fantasyService.createTrade(leagueId, { offeredCardIds: offeredCards, offeredPlayerIds: offeredPlayers, requestedCardIds: requestedCards, requestedPlayerIds: requestedPlayers, toUserId: targetId });
+      setOfferedPlayers([]); setRequestedPlayers([]); setOfferedCards([]); setRequestedCards([]);
+      setIsWizardOpen(false); setWizardStep(1);
+      await refresh();
+    } catch (error) { Alert.alert('Trade not sent', error instanceof Error ? error.message : 'Please try again.'); }
+    finally { setBusy(false); }
+  }
+
+  async function act(trade: TradeOffer, action: 'accept' | 'reject' | 'cancel' | 'approve') {
+    setBusy(true);
+    try {
+      if (action === 'approve') await fantasyService.voteTrade(leagueId, trade.id, 'approve');
+      else if (action === 'reject' && trade.status === 'LeagueReview') await fantasyService.voteTrade(leagueId, trade.id, 'reject');
+      else await fantasyService.resolveTrade(leagueId, trade.id, action);
+      await refresh();
+    } catch (error) { Alert.alert('Trade action failed', error instanceof Error ? error.message : 'Please try again.'); }
+    finally { setBusy(false); }
+  }
+
+  const toggle = (value: string, values: string[], setValues: (next: string[]) => void) => setValues(values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
+  const target = targets.find((member) => member.userId === targetId);
+  const canSend = Boolean(targetId && offeredPlayers.length + requestedPlayers.length + offeredCards.length + requestedCards.length > 0 && offeredPlayers.length === requestedPlayers.length);
+  return <View style={styles.screen}>
+    <BackButton onBack={onBack} />
+    <View style={styles.detailHeader}><View style={styles.detailIcon}><Ionicons color={colors.accent} name="swap-horizontal-outline" size={27} /></View><View><Text style={styles.eyebrow}>{data.name.toUpperCase()}</Text><Text style={styles.detailTitle}>Trades</Text></View></View>
+    <View style={tradeStyles.notice}><Text style={styles.detailLabel}>LEAGUE REVIEW</Text><Text style={styles.detailValue}>Accepted offers auto-approve after {data.tradeReviewHours} hours unless {data.tradeRejectVotesRequired} manager{data.tradeRejectVotesRequired === 1 ? '' : 's'} vote to reject.</Text></View>
+    {targets.length > 0 && <Pressable onPress={() => { setWizardStep(1); setIsWizardOpen(true); }} style={tradeStyles.makeTradeButton}><Ionicons color={colors.background} name="add" size={18} /><Text style={tradeStyles.makeTradeText}>MAKE A TRADE</Text></Pressable>}
+    <Text style={styles.sectionTitle}>LEAGUE OFFERS</Text>
+    <View style={styles.detailCard}>{trades.length === 0 ? <Text style={styles.emptyPeople}>No trade offers yet.</Text> : trades.map((trade) => {
+      const from = members.find((member) => member.userId === trade.fromUserId)?.teamName ?? 'Team';
+      const to = members.find((member) => member.userId === trade.toUserId)?.teamName ?? 'Team';
+      return <View key={trade.id} style={tradeStyles.offer}>
+        <Pressable onPress={() => setSelectedTrade(trade)} style={tradeStyles.offerSummary}><View style={tradeStyles.offerHeading}><Text style={styles.detailLabel}>{from} → {to}</Text><Text style={tradeStyles.status}>{trade.status.replace(/([A-Z])/g, ' $1').trim().toUpperCase()}</Text></View>
+        <Text style={styles.detailValue}>{trade.offeredPlayerIds.length} player(s) + {trade.offeredCardIds.length} card(s) for {trade.requestedPlayerIds.length} player(s) + {trade.requestedCardIds.length} card(s)</Text>
+        {trade.status === 'LeagueReview' && <Text style={tradeStyles.voteCount}>{trade.rejectVotes}/{trade.rejectVotesRequired} rejection votes · {trade.reviewEndsAt ? `ends ${new Date(trade.reviewEndsAt).toLocaleString()}` : ''}</Text>}<Text style={tradeStyles.viewDetails}>VIEW DETAILS →</Text></Pressable>
+        <View style={tradeStyles.actions}>
+          {trade.status === 'Pending' && trade.toUserId === current?.userId && <><TradeAction label="ACCEPT" onPress={() => void act(trade, 'accept')} /><TradeAction danger label="REJECT" onPress={() => void act(trade, 'reject')} /></>}
+          {trade.status === 'Pending' && trade.fromUserId === current?.userId && <TradeAction danger label="CANCEL" onPress={() => void act(trade, 'cancel')} />}
+          {trade.status === 'LeagueReview' && <TradeAction danger={trade.hasCurrentUserRejected} label={trade.hasCurrentUserRejected ? 'REMOVE REJECTION' : 'VOTE TO REJECT'} onPress={() => void act(trade, trade.hasCurrentUserRejected ? 'approve' : 'reject')} />}
+        </View>
+      </View>;
+    })}</View>
+    <Modal animationType="slide" onRequestClose={() => setIsWizardOpen(false)} transparent visible={isWizardOpen}>
+      <View style={tradeStyles.modalBackdrop}><Pressable onPress={() => setIsWizardOpen(false)} style={StyleSheet.absoluteFill} /><View style={tradeStyles.wizard}>
+        <View style={tradeStyles.wizardHeader}><View><Text style={styles.eyebrow}>STEP {wizardStep} OF 3</Text><Text style={tradeStyles.wizardTitle}>{wizardStep === 1 ? 'Who do you want to trade with?' : wizardStep === 2 ? 'What do you want?' : 'What are you trading?'}</Text></View><Pressable onPress={() => setIsWizardOpen(false)}><Ionicons color={colors.text} name="close" size={23} /></Pressable></View>
+        <ScrollView contentContainerStyle={tradeStyles.wizardContent}>
+          {wizardStep === 1 && <View style={tradeStyles.verticalChoices}>{targets.map((member) => <Pressable key={member.userId} onPress={() => setTargetId(member.userId)} style={[tradeStyles.managerChoice, targetId === member.userId && tradeStyles.selectedAsset]}><View><Text style={tradeStyles.assetName}>{member.teamName}</Text><Text style={tradeStyles.assetMeta}>{member.managerName}</Text></View>{targetId === member.userId && <Ionicons color={colors.accent} name="checkmark-circle" size={20} />}</Pressable>)}</View>}
+          {wizardStep === 2 && <><AssetPicker items={targetPlayers.map((player) => ({ id: player.id!, label: player.name, meta: player.position }))} label={`PLAYERS FROM ${target?.teamName ?? 'THEIR TEAM'}`} onToggle={(id) => toggle(id, requestedPlayers, setRequestedPlayers)} selected={requestedPlayers} /><AssetPicker items={targetCards.map((card) => ({ id: card.id, label: card.label, meta: `CARD ×${card.quantity}` }))} label="CARDS YOU WANT" onToggle={(id) => toggle(id, requestedCards, setRequestedCards)} selected={requestedCards} /></>}
+          {wizardStep === 3 && <><AssetPicker items={ownPlayers.map((player) => ({ id: player.id!, label: player.name, meta: player.position }))} label={`PLAYERS FROM ${current?.teamName ?? 'YOUR TEAM'}`} onToggle={(id) => toggle(id, offeredPlayers, setOfferedPlayers)} selected={offeredPlayers} /><AssetPicker items={ownCards.map((card) => ({ id: card.id, label: card.label, meta: `CARD ×${card.quantity}` }))} label="CARDS YOU SEND" onToggle={(id) => toggle(id, offeredCards, setOfferedCards)} selected={offeredCards} />{offeredPlayers.length !== requestedPlayers.length && <Text style={tradeStyles.validation}>Choose the same number of players from each roster. Card-only trades are allowed.</Text>}</>}
+        </ScrollView>
+        <View style={tradeStyles.wizardFooter}>{wizardStep > 1 && <TradeAction label="BACK" onPress={() => setWizardStep((wizardStep - 1) as 1 | 2)} />}<Pressable disabled={wizardStep === 3 ? !canSend || busy : !targetId} onPress={() => wizardStep === 3 ? void submit() : setWizardStep((wizardStep + 1) as 2 | 3)} style={[tradeStyles.nextButton, (wizardStep === 3 ? !canSend || busy : !targetId) && tradeStyles.disabledNext]}><Text style={tradeStyles.nextText}>{wizardStep === 3 ? busy ? 'SENDING…' : 'SEND OFFER' : 'NEXT'}</Text></Pressable></View>
+      </View></View>
+    </Modal>
+    <TradeDetailsModal cards={leagueCards} members={members} onClose={() => setSelectedTrade(null)} players={leaguePlayers} trade={selectedTrade} />
+  </View>;
+}
+
+function AssetPicker({ items, label, onToggle, selected }: { items: { id: string; label: string; meta: string }[]; label: string; onToggle: (id: string) => void; selected: string[] }) {
+  return <View style={tradeStyles.assetSection}><Text style={tradeStyles.assetLabel}>{label}</Text><View style={tradeStyles.assets}>{items.map((item) => <Pressable key={item.id} onPress={() => onToggle(item.id)} style={[tradeStyles.asset, selected.includes(item.id) && tradeStyles.selectedAsset]}><Text style={tradeStyles.assetName}>{item.label}</Text><Text style={tradeStyles.assetMeta}>{item.meta}</Text></Pressable>)}{items.length === 0 && <Text style={styles.detailValue}>No available assets.</Text>}</View></View>;
+}
+
+function TradeAction({ danger = false, label, onPress }: { danger?: boolean; label: string; onPress: () => void }) {
+  return <Pressable onPress={onPress} style={[tradeStyles.action, danger && tradeStyles.dangerAction]}><Text style={[tradeStyles.actionText, danger && tradeStyles.dangerText]}>{label}</Text></Pressable>;
+}
+
+function TradeDetailsModal({ cards, members, onClose, players, trade }: { cards: PowerCard[]; members: LeagueMember[]; onClose: () => void; players: MatchupPlayerData[]; trade: TradeOffer | null }) {
+  if (!trade) return null;
+  const from = members.find((member) => member.userId === trade.fromUserId)?.teamName ?? 'Offering team';
+  const to = members.find((member) => member.userId === trade.toUserId)?.teamName ?? 'Receiving team';
+  const playerName = (id: string) => players.find((player) => player.id === id)?.name ?? id;
+  const cardName = (id: string) => cards.find((card) => card.id === id)?.label ?? id;
+  const assetNames = (playerIds: string[], cardIds: string[]) => [...playerIds.map(playerName), ...cardIds.map((id) => `${cardName(id)} card`)];
+  return <Modal animationType="fade" onRequestClose={onClose} transparent visible><View style={tradeStyles.modalBackdrop}><Pressable onPress={onClose} style={StyleSheet.absoluteFill} /><View style={tradeStyles.detailsDialog}><View style={tradeStyles.wizardHeader}><View><Text style={styles.eyebrow}>TRADE DETAILS</Text><Text style={tradeStyles.wizardTitle}>{from} ↔ {to}</Text></View><Pressable onPress={onClose}><Ionicons color={colors.text} name="close" size={23} /></Pressable></View><View style={tradeStyles.detailAssets}><TradeDetailSide assets={assetNames(trade.offeredPlayerIds, trade.offeredCardIds)} label={`${from} SENDS`} /><Ionicons color={colors.accent} name="swap-vertical" size={22} /><TradeDetailSide assets={assetNames(trade.requestedPlayerIds, trade.requestedCardIds)} label={`${to} SENDS`} /></View><View style={tradeStyles.detailMeta}><Text style={styles.detailValue}>Status · {trade.status.replace(/([A-Z])/g, ' $1').trim()}</Text><Text style={styles.detailValue}>Created · {new Date(trade.createdAt).toLocaleString()}</Text>{trade.reviewEndsAt && <Text style={styles.detailValue}>Review ends · {new Date(trade.reviewEndsAt).toLocaleString()}</Text>}<Text style={styles.detailValue}>Rejection votes · {trade.rejectVotes}/{trade.rejectVotesRequired}</Text></View></View></View></Modal>;
+}
+
+function TradeDetailSide({ assets, label }: { assets: string[]; label: string }) {
+  return <View style={tradeStyles.detailSide}><Text style={tradeStyles.assetLabel}>{label}</Text>{assets.length ? assets.map((asset) => <Text key={asset} style={tradeStyles.detailAsset}>• {asset}</Text>) : <Text style={styles.detailValue}>Nothing included</Text>}</View>;
+}
+
+/** Commissioner controls for the rejection threshold and automatic-review window. */
+function LeagueSettings({ data, isCommissioner, leagueId, onBack }: { data: LeagueData; isCommissioner: boolean; leagueId: string; onBack: () => void }) {
+  const [votes, setVotes] = useState(String(data.tradeRejectVotesRequired));
+  const [hours, setHours] = useState(String(data.tradeReviewHours));
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try {
+      await fantasyService.updateLeagueSettings(leagueId, { tradeRejectVotesRequired: Number(votes), tradeReviewHours: Number(hours) });
+      Alert.alert('Trade settings saved');
+    } catch (error) { Alert.alert('Unable to save', error instanceof Error ? error.message : 'Please try again.'); }
+    finally { setBusy(false); }
+  };
+  return <View style={styles.screen}><BackButton onBack={onBack} /><View style={styles.detailHeader}><View style={styles.detailIcon}><Ionicons color={colors.accent} name="settings-outline" size={27} /></View><View><Text style={styles.eyebrow}>{data.name.toUpperCase()}</Text><Text style={styles.detailTitle}>Settings</Text></View></View><View style={styles.detailCard}><Text style={styles.detailLabel}>TRADE REVIEW</Text><Text style={styles.rulesIntroCopy}>An accepted trade executes automatically when its review window ends unless enough managers reject it.</Text><Text style={tradeStyles.inputLabel}>REJECTION VOTES REQUIRED</Text><TextInput editable={isCommissioner} keyboardType="number-pad" onChangeText={setVotes} style={draftStyles.searchInput} value={votes} /><Text style={tradeStyles.inputLabel}>REVIEW WINDOW (HOURS)</Text><TextInput editable={isCommissioner} keyboardType="number-pad" onChangeText={setHours} style={draftStyles.searchInput} value={hours} />{isCommissioner ? <Pressable disabled={busy} onPress={() => void save()} style={draftStyles.liveButton}><Text style={draftStyles.liveButtonText}>{busy ? 'SAVING…' : 'SAVE TRADE SETTINGS'}</Text></Pressable> : <Text style={styles.detailValue}>Only the commissioner can change these settings.</Text>}</View></View>;
+}
+
+/** API-backed member directory and standings table. */
+function LeaguePeople({ data, destination, members, onBack }: { data: LeagueData; destination: 'members' | 'standings'; members: LeagueMember[]; onBack: () => void }) {
+  const isStandings = destination === 'standings';
+  return <View style={styles.screen}>
+    <Pressable onPress={onBack} style={styles.backButton}><Ionicons color={colors.text} name="chevron-back" size={20} /><Text style={styles.backText}>LEAGUE HQ</Text></Pressable>
+    <View style={styles.detailHeader}><View style={styles.detailIcon}><Ionicons color={colors.accent} name={isStandings ? 'podium-outline' : 'people-outline'} size={27} /></View><View><Text style={styles.eyebrow}>{data.name.toUpperCase()}</Text><Text style={styles.detailTitle}>{isStandings ? 'Standings' : 'Members'}</Text></View></View>
+    <View style={styles.detailCard}>
+      {members.length === 0 && <Text style={styles.emptyPeople}>No league members yet.</Text>}
+      {members.map((member) => <View key={member.userId} style={styles.detailRow}>
+        <View style={styles.rank}><Text style={styles.rankText}>{isStandings ? member.rank : member.managerName.slice(0, 1).toUpperCase()}</Text></View>
+        <View style={styles.detailCopy}>
+          <Text style={styles.detailLabel}>{member.teamName}</Text>
+          <Text style={styles.detailValue}>{isStandings ? `${member.wins}-${member.losses}${member.ties ? `-${member.ties}` : ''} · ${member.pointsFor.toFixed(1)} PF · ${member.pointsAgainst.toFixed(1)} PA` : `${member.managerName}${member.email ? ` · ${member.email}` : ''}`}</Text>
+        </View>
+        <View style={styles.peopleBadges}>{member.role === 'commissioner' && <Text style={[styles.badge, styles.commissionerBadge]}>COMMISSIONER</Text>}{member.isCurrentUser && <Text style={styles.badge}>YOU</Text>}</View>
+      </View>)}
+    </View>
+  </View>;
+}
+
 /** A horizontally scrollable draft grid based on the league's configured round positions. */
-function DraftBoard({ data, onBack }: { data: LeagueData; onBack: () => void }) {
-  const [isLiveDraft, setIsLiveDraft] = useState(false);
-  const teams = draftTeams.slice(0, data.memberCount);
-  if (isLiveDraft) return <LiveDraftView data={data} onBack={() => setIsLiveDraft(false)} teams={teams} />;
-  return <View style={styles.screen}><Pressable onPress={onBack} style={styles.backButton}><Ionicons color={colors.text} name="chevron-back" size={20} /><Text style={styles.backText}>LEAGUE HQ</Text></Pressable><View style={styles.detailHeader}><View style={styles.detailIcon}><Ionicons color={colors.accent} name="layers-outline" size={27} /></View><View><Text style={styles.eyebrow}>{data.name.toUpperCase()}</Text><Text style={styles.detailTitle}>Draft Board</Text></View></View><Pressable onPress={() => setIsLiveDraft(true)} style={draftStyles.liveButton}><Ionicons color={colors.background} name="radio" size={16} /><Text style={draftStyles.liveButtonText}>OPEN LIVE DRAFT</Text></Pressable><View style={draftStyles.summary}><Text style={styles.rulesIntroTitle}>{teams.length} TEAMS · {draftPositions.length} ROUNDS</Text><Text style={styles.rulesIntroCopy}>Swipe horizontally to browse every manager’s picks.</Text></View><ScrollView horizontal showsHorizontalScrollIndicator={false} style={draftStyles.scroller}><View>{<View style={draftStyles.headerRow}><View style={draftStyles.roundHeader}><Text style={draftStyles.roundHeaderText}>ROUND</Text></View>{teams.map((team) => <View key={team} style={draftStyles.teamHeader}><Text numberOfLines={2} style={draftStyles.teamHeaderText}>{team}</Text></View>)}</View>}{draftPositions.map((_, roundIndex) => <View key={roundIndex} style={draftStyles.boardRow}><View style={draftStyles.roundCell}><Text style={draftStyles.roundNumber}>ROUND {roundIndex + 1}</Text></View>{teams.map((team, teamIndex) => <DraftPick key={team} overallPick={roundIndex * teams.length + teamIndex + 1} round={roundIndex + 1} teamIndex={teamIndex} />)}</View>)}</View></ScrollView></View>;
+function DraftBoard({ currentUserId, data, isCommissioner, leagueId, onBack }: { currentUserId: string | null; data: LeagueData; isCommissioner: boolean; leagueId: string; onBack: () => void }) {
+  const [draft, setDraft] = useState<DraftState | null>(null);
+  const [activeDraftTab, setActiveDraftTab] = useState<'board' | 'players' | 'team'>('team');
+  const [selectedTeamId, setSelectedTeamId] = useState(currentUserId ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [scheduledAt, setScheduledAt] = useState(() => { const next = new Date(Date.now() + 86_400_000); next.setHours(19, 0, 0, 0); return next; });
+  const [busy, setBusy] = useState(false);
+  const [now, setNow] = useState(Date.now());
+
+  const refresh = useCallback(async () => {
+    try { setDraft(await fantasyService.getDraft(leagueId)); setError(null); }
+    catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to load the draft.'); }
+  }, [leagueId]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  // Draft state changes quickly while managers are picking, but completed drafts
+  // are immutable. Stop polling as soon as the backend reports completion.
+  useEffect(() => {
+    if (!draft || draft.isComplete) return;
+    const poll = setInterval(() => void refresh(), 2_000);
+    return () => clearInterval(poll);
+  }, [draft?.isComplete, refresh]);
+
+  // The local clock is only needed while rendering a scheduled/live countdown.
+  useEffect(() => {
+    if (draft?.status !== 'scheduled' && draft?.status !== 'live') return;
+    const clock = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(clock);
+  }, [draft?.status]);
+
+  useEffect(() => {
+    if (!draft?.startsAt) return;
+    const scheduled = new Date(draft.startsAt);
+    setScheduledAt(scheduled);
+  }, [draft?.startsAt]);
+
+  useEffect(() => {
+    if (!draft || selectedTeamId) return;
+    setSelectedTeamId(currentUserId ?? draft.draftOrder[0]?.userId ?? '');
+  }, [currentUserId, draft, selectedTeamId]);
+
+  async function schedule() {
+    const startsAt = scheduledAt;
+    if (Number.isNaN(startsAt.getTime())) return Alert.alert('Invalid time', 'Choose a valid draft date and time.');
+    setBusy(true);
+    try { setDraft(await fantasyService.scheduleDraft(leagueId, startsAt.toISOString())); }
+    catch (requestError) { Alert.alert('Unable to schedule draft', requestError instanceof Error ? requestError.message : 'Please try again.'); }
+    finally { setBusy(false); }
+  }
+
+  async function pick(player: MatchupPlayerData) {
+    if (!draft?.canCurrentUserPick || !player.id || busy) return;
+    setBusy(true);
+    try { setDraft(await fantasyService.makeDraftPick(leagueId, player.id)); }
+    catch (requestError) { Alert.alert('Draft pick rejected', requestError instanceof Error ? requestError.message : 'The pick was not accepted.'); await refresh(); }
+    finally { setBusy(false); }
+  }
+
+  if (!draft) return <View style={styles.screen}><BackButton onBack={onBack} /><Text style={styles.emptyPeople}>{error ?? 'Loading draft…'}</Text></View>;
+  const filteredPlayers = draft.availablePlayers.filter((player) => `${player.name} ${player.position} ${player.team}`.toLowerCase().includes(query.toLowerCase())).slice(0, 80);
+  const countdownTarget = draft.status === 'scheduled' ? draft.startsAt : draft.clockEndsAt;
+  const countdown = countdownTarget ? formatCountdown(new Date(countdownTarget).getTime() - now) : null;
+
+  return <View style={styles.screen}>
+    <BackButton onBack={onBack} />
+    <View style={styles.detailHeader}><View style={styles.detailIcon}><Ionicons color={colors.accent} name="layers-outline" size={27} /></View><View><Text style={styles.eyebrow}>{data.name.toUpperCase()}</Text><Text style={styles.detailTitle}>Draft Room</Text></View></View>
+    <View style={draftStyles.summary}>
+      <Text style={styles.rulesIntroTitle}>{draft.status.replaceAll('_', ' ').toUpperCase()}</Text>
+      <Text style={styles.rulesIntroCopy}>{draftStatusCopy(draft, countdown)}</Text>
+    </View>
+    {isCommissioner && draft.picks.length === 0 && !draft.isComplete && <View style={styles.detailCard}>
+      <Text style={styles.detailLabel}>{draft.startsAt ? 'RESCHEDULE DRAFT' : 'SCHEDULE DRAFT'}</Text>
+      <Text style={styles.rulesIntroCopy}>Times use this device’s local timezone.</Text>
+      <DraftDateTimePicker onChange={setScheduledAt} value={scheduledAt} />
+      <Pressable disabled={busy} onPress={() => void schedule()} style={[draftStyles.liveButton, busy && { opacity: .5 }]}><Text style={draftStyles.liveButtonText}>{busy ? 'SCHEDULING…' : draft.startsAt ? 'UPDATE DRAFT START' : 'SET DRAFT START'}</Text></Pressable>
+    </View>}
+    <View style={draftStyles.tabBar}>{(['team', 'players', 'board'] as const).map((tab) => <Pressable key={tab} onPress={() => setActiveDraftTab(tab)} style={[draftStyles.tab, activeDraftTab === tab && draftStyles.activeTab]}><Text style={[draftStyles.tabText, activeDraftTab === tab && draftStyles.activeTabText]}>{tab.toUpperCase()}</Text></Pressable>)}</View>
+    <View style={styles.detailCard}>
+      <Text style={styles.detailLabel}>PICK {draft.currentPick} OF {draft.totalPicks}</Text>
+      <Text style={styles.detailValue}>{draft.isComplete ? 'Draft complete' : draft.currentPickerTeamName ? `${draft.currentPickerTeamName} is on the clock${countdown && draft.status === 'live' ? ` · ${countdown}` : ''}` : 'Waiting for the draft to be scheduled'}</Text>
+    </View>
+    {activeDraftTab === 'board' && <><ScrollView horizontal showsHorizontalScrollIndicator={false}><View style={draftStyles.orderRow}>{draft.draftOrder.map((participant) => <View key={participant.userId} style={[draftStyles.orderCard, participant.userId === draft.currentPickerUserId && draftStyles.currentOrderCard]}><Text style={draftStyles.pickNumber}>POSITION {participant.draftPosition}</Text><Text numberOfLines={1} style={draftStyles.pickName}>{participant.teamName}</Text></View>)}</View></ScrollView><View style={styles.detailCard}>{draft.picks.length === 0 ? <Text style={styles.emptyPeople}>No picks have been made yet.</Text> : [...draft.picks].reverse().map((draftPick) => <View key={draftPick.id} style={styles.detailRow}><Text style={draftStyles.boardPickNumber}>#{draftPick.overallPick}</Text><View style={styles.detailCopy}><Text style={styles.detailLabel}>{draftPick.player.name}</Text><Text style={styles.detailValue}>{draftPick.player.position} · {draftPick.player.team} · {draft.draftOrder.find((manager) => manager.userId === draftPick.teamId)?.teamName ?? 'Team'}</Text></View></View>)}</View></>}
+    {activeDraftTab === 'players' && <><TextInput onChangeText={setQuery} placeholder="Search available players" placeholderTextColor={colors.muted} style={draftStyles.searchInput} value={query} /><View style={styles.detailCard}>{filteredPlayers.map((player) => { const isEligible = canDraftPlayer(draft.currentUserRoster, player); const isDisabled = !draft.canCurrentUserPick || !isEligible || busy; return <View key={player.id ?? player.name} style={[styles.detailRow, !isEligible && draftStyles.ineligiblePlayer]}><View style={styles.detailCopy}><Text style={styles.detailLabel}>{player.name}</Text><Text style={styles.detailValue}>{player.position} · {player.team}{!isEligible ? ' · No eligible roster slot' : ''}</Text></View><Pressable accessibilityState={{ disabled: isDisabled }} disabled={isDisabled} onPress={() => void pick(player)} style={[draftStyles.pickButton, isDisabled && draftStyles.disabledPickButton]}><Text style={[draftStyles.pickButtonText, isDisabled && draftStyles.disabledPickButtonText]}>DRAFT</Text></Pressable></View>;})}</View></>}
+    {activeDraftTab === 'team' && <DraftTeamView currentUserId={currentUserId} draft={draft} onSelectTeam={setSelectedTeamId} selectedTeamId={selectedTeamId} />}
+  </View>;
+}
+
+const draftStarterSlots = [
+  ['starter-qb-1', 'QB'], ['starter-rb-1', 'RB'], ['starter-rb-2', 'RB'], ['starter-wr-1', 'WR'], ['starter-wr-2', 'WR'],
+  ['starter-te-1', 'TE'], ['starter-flex-1', 'FLEX'], ['starter-def-1', 'DEF'], ['starter-k-1', 'K'], ['starter-coach-1', 'COACH'],
+] as const;
+
+function DraftTeamView({ currentUserId, draft, onSelectTeam, selectedTeamId }: { currentUserId: string | null; draft: DraftState; onSelectTeam: (teamId: string) => void; selectedTeamId: string }) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const selectedTeam = draft.draftOrder.find((team) => team.userId === selectedTeamId) ?? draft.draftOrder[0];
+  const roster = selectedTeam?.userId === currentUserId
+    ? draft.currentUserRoster
+    : buildRosterFromPicks(draft, selectedTeam?.userId ?? '');
+  return <View style={draftStyles.teamView}>
+    <View style={draftStyles.teamSelector}>
+      <Pressable accessibilityRole="button" onPress={() => setIsMenuOpen((open) => !open)} style={draftStyles.teamSelectorButton}>
+        <View><Text style={draftStyles.teamSelectorLabel}>VIEW TEAM</Text><Text style={draftStyles.teamSelectorName}>{selectedTeam?.teamName ?? 'Select a team'}</Text></View>
+        <Ionicons color={colors.accent} name={isMenuOpen ? 'chevron-up' : 'chevron-down'} size={19} />
+      </Pressable>
+      {isMenuOpen && <View style={draftStyles.teamMenu}>{draft.draftOrder.map((team) => <Pressable key={team.userId} onPress={() => { onSelectTeam(team.userId); setIsMenuOpen(false); }} style={[draftStyles.teamOption, team.userId === selectedTeam?.userId && draftStyles.selectedTeamOption]}><View><Text style={draftStyles.teamOptionName}>{team.teamName}</Text>{team.userId === currentUserId && <Text style={draftStyles.yourTeamLabel}>YOUR TEAM</Text>}</View>{team.userId === selectedTeam?.userId && <Ionicons color={colors.accent} name="checkmark" size={17} />}</Pressable>)}</View>}
+    </View>
+    <DraftRoster roster={roster} />
+  </View>;
+}
+
+function DraftRoster({ roster }: { roster: DraftState['currentUserRoster'] }) {
+  const rows = [
+    ...draftStarterSlots.map(([id, position]) => ({ id, position, player: roster.starters.find((slot) => slot.id === id)?.player })),
+    ...[1, 2, 3].map((number) => ({ id: `bench-${number}`, position: 'BENCH', player: roster.bench.find((slot) => slot.id === `bench-${number}`)?.player })),
+  ];
+  return <View style={styles.detailCard}>{rows.map((row) => <View key={row.id} style={styles.detailRow}><Text style={draftStyles.rosterPosition}>{row.position}</Text><View style={styles.detailCopy}><Text style={styles.detailLabel}>{row.player?.name ?? 'Empty'}</Text>{row.player && <Text style={styles.detailValue}>{row.player.position} · {row.player.team}</Text>}</View></View>)}</View>;
+}
+
+/** Replays the backend's starter-first slot policy for read-only views of other teams. */
+function buildRosterFromPicks(draft: DraftState, teamId: string): DraftState['currentUserRoster'] {
+  const starters: DraftState['currentUserRoster']['starters'] = [];
+  const bench: DraftState['currentUserRoster']['bench'] = [];
+  for (const pick of draft.picks.filter((item) => item.teamId === teamId).sort((a, b) => a.overallPick - b.overallPick)) {
+    const exact = draftStarterSlots.find(([id, position]) => position === pick.player.position && !starters.some((slot) => slot.id === id));
+    const flex = ['RB', 'WR', 'TE'].includes(pick.player.position) && !starters.some((slot) => slot.id === 'starter-flex-1')
+      ? draftStarterSlots.find(([id]) => id === 'starter-flex-1')
+      : undefined;
+    const destination = exact ?? flex;
+    if (destination) starters.push({ id: destination[0], kind: 'starter', player: pick.player, position: destination[1] });
+    else bench.push({ id: `bench-${bench.length + 1}`, kind: 'bench', player: pick.player, position: pick.player.position });
+  }
+  return { bench, starters };
+}
+
+function canDraftPlayer(roster: DraftState['currentUserRoster'], player: MatchupPlayerData) {
+  const occupied = new Set(roster.starters.map((slot) => slot.id));
+  const hasExactSlot = draftStarterSlots.some(([id, position]) => position === player.position && !occupied.has(id));
+  const hasFlexSlot = ['RB', 'WR', 'TE'].includes(player.position) && !occupied.has('starter-flex-1');
+  return hasExactSlot || hasFlexSlot || roster.bench.length < 3;
+}
+
+function BackButton({ onBack }: { onBack: () => void }) {
+  return <Pressable onPress={onBack} style={styles.backButton}><Ionicons color={colors.text} name="chevron-back" size={20} /><Text style={styles.backText}>LEAGUE HQ</Text></Pressable>;
+}
+
+function formatCountdown(milliseconds: number) {
+  const total = Math.max(0, Math.ceil(milliseconds / 1_000));
+  const days = Math.floor(total / 86_400);
+  const hours = Math.floor(total % 86_400 / 3_600);
+  const minutes = Math.floor(total % 3_600 / 60);
+  const seconds = total % 60;
+  return days > 0 ? `${days}d ${hours}h ${minutes}m` : `${hours ? `${hours}h ` : ''}${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function draftStatusCopy(draft: DraftState, countdown: string | null) {
+  if (draft.status === 'waiting_for_members') return `${draft.draftOrder.length} managers have joined. Every league spot must be filled first.`;
+  if (draft.status === 'unscheduled') return 'The commissioner has not set a draft time yet.';
+  if (draft.status === 'scheduled') return `Draft begins ${new Date(draft.startsAt!).toLocaleString()}${countdown ? ` · ${countdown}` : ''}.`;
+  if (draft.status === 'complete') return 'All picks are complete and matchup scheduling is unlocked.';
+  return draft.canCurrentUserPick ? 'You are on the clock.' : `${draft.currentPickerTeamName ?? 'Another manager'} is on the clock.`;
 }
 
 interface DraftPlayer { name: string; nflTeam: string; overallPick: number; position: string; round: number; }
@@ -247,26 +639,20 @@ function activityColor(type: LeagueActivityEntry['type']) { return type === 'car
 /** Detailed, categorized settings page inspired by the grouped scoring layouts in major fantasy apps. */
 function LeagueRules({ data, onBack }: { data: LeagueData; onBack: () => void }) {
   const [openSection, setOpenSection] = useState('offense');
-  const sections = [
-    { id: 'offense', title: 'OFFENSIVE SCORING', rows: [['Reception', '+1.0 pt'], ['Receiving yards', '+0.10 / yard'], ['Receiving TD', '+6 pts'], ['Rushing yards', '+0.10 / yard'], ['Rushing TD', '+6 pts'], ['Passing yards', '+0.04 / yard'], ['Passing TD', '+4 pts'], ['2-point conversion', '+2 pts'], ['Interception thrown', '−2 pts'], ['Fumble lost', '−2 pts']] },
-    { id: 'kicking', title: 'KICKING', rows: [['FG made: 0-39 yards', '+3 pts'], ['FG made: 40-49 yards', '+4 pts'], ['FG made: 50-59 yards', '+5 pts'], ['FG made: 60+ yards', '+6 pts'], ['Extra point made', '+1 pt'], ['Field goal missed', '−1 pt']] },
-    { id: 'defense', title: 'DEFENSE / SPECIAL TEAMS', rows: [['Sack', '+1 pt'], ['Interception', '+2 pts'], ['Fumble recovery', '+2 pts'], ['Safety', '+2 pts'], ['Defensive or return TD', '+6 pts'], ['0 points allowed', '+5 pts'], ['1-6 points allowed', '+4 pts'], ['7-13 points allowed', '+3 pts'], ['28-34 points allowed', '−1 pt'], ['35+ points allowed', '−4 pts']] },
-    { id: 'coach', title: 'COACH & ROSTER', rows: [['Team win (Coach)', '+3 pts'], ['Team loss (Coach)', '−1 pt'], ['Starters', 'QB, 2 RB, 2 WR, TE, FLEX, D/ST, K, Coach'], ['FLEX eligibility', 'RB / WR / TE'], ['Bench', 'Any position'], ['Lineup lock', 'Individual game kickoff']] },
-    { id: 'league', title: 'LEAGUE & CARD RULES', rows: [['Format', 'Head-to-head, weekly'], ['Regular season', `Weeks 1-${Math.max(14, data.currentWeek + 9)}`], ['Playoffs', '6 teams · Weeks 15-17'], ['Card inventory', 'League-defined quantities'], ['Play card', 'Must target an eligible player'], ['Remove a card', 'Only before that player’s game begins'], ['Stat corrections', 'Official NFL corrections apply automatically']] },
-  ];
+  const sections = [...SCORING_RULE_SECTIONS, { id: 'league', title: 'LEAGUE & CARD RULES', rows: [['Format', 'Head-to-head, weekly'], ['Regular season', `Weeks 1-${Math.max(14, data.currentWeek + 9)}`], ['Playoffs', '6 teams · Weeks 15-17'], ['Card inventory', 'League-defined quantities'], ['Play card', 'Must target an eligible player'], ['Remove a card', 'Only before that player’s game begins'], ['Stat corrections', 'Official NFL corrections apply automatically']] }];
   return <View style={styles.screen}><Pressable onPress={onBack} style={styles.backButton}><Ionicons color={colors.text} name="chevron-back" size={20} /><Text style={styles.backText}>LEAGUE HQ</Text></Pressable><View style={styles.detailHeader}><View style={styles.detailIcon}><Ionicons color={colors.accent} name="book-outline" size={27} /></View><View><Text style={styles.eyebrow}>{data.name.toUpperCase()}</Text><Text style={styles.detailTitle}>Rules & Scoring</Text></View></View><View style={styles.rulesIntro}><Text style={styles.rulesIntroTitle}>FULL PPR · HEAD-TO-HEAD</Text><Text style={styles.rulesIntroCopy}>Tap a section to view every scoring value and league rule.</Text></View>{sections.map((section) => { const isOpen = openSection === section.id; return <View key={section.id} style={styles.rulesCard}><Pressable onPress={() => setOpenSection(isOpen ? '' : section.id)} style={styles.rulesHeader}><Text style={styles.rulesTitle}>{section.title}</Text><Ionicons color={colors.accent} name={isOpen ? 'chevron-up' : 'chevron-down'} size={19} /></Pressable>{isOpen && section.rows.map(([label, value]) => <View key={label} style={styles.ruleRow}><Text style={styles.ruleLabel}>{label}</Text><Text style={styles.ruleValue}>{value}</Text></View>)}</View>;})}</View>;
 }
 
 /** Provides representative static detail rows for the mock league experience. */
 function getDetailContent(destination: LeagueDestination, data: LeagueData, isCommissioner: boolean) {
   const rows: Record<LeagueDestination, Array<{ badge?: string; label: string; value: string }>> = {
-    standings: [{ label: '1  Velocity Vipers', value: '4-1 · 654.2 pts' }, { label: '2  Grid Iron Kings', value: '4-1 · 632.8 pts' }, { label: '3  Your team', value: '3-2 · 618.4 pts', badge: 'YOU' }, { label: '4  Harbor Hawks', value: '3-2 · 601.7 pts' }],
+    standings: [],
     activity: [{ label: '8:31 PM', value: 'Chris Harper played Breakaway Threat on J. Taylor.' }, { label: '8:17 PM', value: 'You moved T. Higgins to your bench.' }, { label: '7:54 PM', value: 'Maya Reed offered a trade to Jordan Lee.' }],
     trades: [{ label: 'Trade block', value: '4 managers have players available.' }, { label: 'Pending offer', value: 'No offers waiting for you.' }, { label: 'Most recent', value: 'Harbor Hawks acquired D. Smith for A. Cooper.' }],
     playoffs: [{ label: 'Format', value: '6 teams · Weeks 15-17' }, { label: 'Current seed', value: '#3 · 78% chance to qualify' }, { label: 'Next cutoff', value: `Week ${Math.max(data.currentWeek + 1, 2)} standings lock` }],
     draft: [{ label: 'Draft format', value: 'Snake · 16 rounds' }, { label: 'Your first pick', value: 'Jalen Hurts · Round 1, Pick 8' }, { label: 'Draft recap', value: 'Viewable to all league members.' }],
     chat: [{ label: 'Commissioner', value: 'Welcome to Week ' + data.currentWeek + '. Set your lineups before Sunday!' }, { label: 'Maya Reed', value: 'Anyone interested in a WR trade?' }, { label: 'Jordan Lee', value: 'That last card play was brutal.' }],
-    members: [{ label: 'Your team', value: 'Trezza Titans', badge: 'YOU' }, { label: 'League size', value: `${data.memberCount} active managers` }, { label: 'Invitations', value: 'Commissioner approval required.' }],
+    members: [],
     rules: [{ label: 'Lineup lock', value: 'Each player locks at their scheduled kickoff.' }, { label: 'Card effects', value: 'Effects are removable only before a game starts.' }, { label: 'Roster', value: '10 starters and flexible bench slots.' }],
     settings: [{ label: 'League visibility', value: 'Private' }, { label: 'Commissioner access', value: isCommissioner ? 'You can manage league settings.' : 'Read-only access. Ask the commissioner to make changes.', badge: isCommissioner ? 'COMMISSIONER' : 'READ ONLY' }, { label: 'Scoring changes', value: 'Locked after the season begins.' }],
   };
@@ -276,13 +662,107 @@ function getDetailContent(destination: LeagueDestination, data: LeagueData, isCo
 function LeagueStat({ label, value }: { label: string; value: string }) { return <View><Text style={styles.statValue}>{value}</Text><Text style={styles.statLabel}>{label}</Text></View>; }
 
 const styles = StyleSheet.create({
-  screen: { gap: 14 }, heroCard: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 16, borderWidth: 1, padding: 18 }, eyebrow: { color: '#91A09C', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }, leagueName: { color: colors.text, fontSize: 25, fontWeight: '900', marginTop: 5 }, stats: { borderTopColor: '#263330', borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-between', marginTop: 17, paddingTop: 13 }, statValue: { color: colors.accent, fontSize: 17, fontWeight: '900' }, statLabel: { color: colors.textSecondary, fontSize: 8, fontWeight: '800', letterSpacing: .6, marginTop: 3 }, sectionTitle: { color: colors.text, fontSize: 11, fontWeight: '900', letterSpacing: 1, paddingHorizontal: 2 }, toolGrid: { gap: 9 }, toolCard: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border, borderRadius: 13, borderWidth: 1, flexDirection: 'row', minHeight: 70, padding: 11 }, pressed: { opacity: .72, transform: [{ scale: .985 }] }, toolIcon: { alignItems: 'center', backgroundColor: '#17221E', borderRadius: 10, height: 42, justifyContent: 'center', width: 42 }, toolText: { flex: 1, marginHorizontal: 11 }, toolTitle: { color: colors.text, fontSize: 14, fontWeight: '900' }, toolDescription: { color: colors.textSecondary, fontSize: 10, lineHeight: 14, marginTop: 3 }, backButton: { alignItems: 'center', alignSelf: 'flex-start', flexDirection: 'row', marginLeft: -4, paddingVertical: 4 }, backText: { color: colors.text, fontSize: 11, fontWeight: '800', letterSpacing: .7 }, detailHeader: { alignItems: 'center', flexDirection: 'row', gap: 12, marginBottom: 2 }, detailIcon: { alignItems: 'center', backgroundColor: '#17221E', borderRadius: 13, height: 52, justifyContent: 'center', width: 52 }, detailTitle: { color: colors.text, fontSize: 23, fontWeight: '900', marginTop: 3 }, detailCard: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 16, borderWidth: 1, overflow: 'hidden' }, detailRow: { alignItems: 'center', borderBottomColor: '#202A28', borderBottomWidth: 1, flexDirection: 'row', minHeight: 64, paddingHorizontal: 15 }, detailCopy: { flex: 1, paddingVertical: 10 }, detailLabel: { color: colors.text, fontSize: 12, fontWeight: '800' }, detailValue: { color: colors.textSecondary, fontSize: 11, lineHeight: 16, marginTop: 3 }, badge: { borderColor: colors.accent, borderRadius: 5, borderWidth: 1, color: colors.accent, fontSize: 8, fontWeight: '900', letterSpacing: .5, paddingHorizontal: 6, paddingVertical: 4 }, commissionerBadge: { backgroundColor: '#1D2D17' }, rulesIntro: { backgroundColor: '#17221E', borderColor: '#31523A', borderRadius: 12, borderWidth: 1, padding: 13 }, rulesIntroTitle: { color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: .8 }, rulesIntroCopy: { color: colors.textSecondary, fontSize: 11, marginTop: 4 }, rulesCard: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 13, borderWidth: 1, overflow: 'hidden' }, rulesHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 52, paddingHorizontal: 15 }, rulesTitle: { color: colors.text, fontSize: 11, fontWeight: '900', letterSpacing: .7 }, ruleRow: { alignItems: 'center', borderTopColor: '#202A28', borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 43, paddingHorizontal: 15 }, ruleLabel: { color: colors.textSecondary, flex: 1, fontSize: 12, fontWeight: '700', paddingRight: 12 }, ruleValue: { color: colors.accent, fontSize: 12, fontWeight: '900', textAlign: 'right' }, activityCard: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 16, borderWidth: 1, overflow: 'hidden' }, activityRow: { alignItems: 'flex-start', borderBottomColor: '#202A28', borderBottomWidth: 1, flexDirection: 'row', minHeight: 73, padding: 13 }, activityIcon: { alignItems: 'center', backgroundColor: '#17221E', borderRadius: 16, height: 32, justifyContent: 'center', marginRight: 10, width: 32 }, activityCopy: { flex: 1 }, activityDate: { color: '#879793', fontSize: 9, fontWeight: '800', letterSpacing: .35 }, activitySummary: { color: colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: 4 }, activityActor: { color: colors.text, fontWeight: '900' }, feedStatus: { color: colors.textSecondary, fontSize: 11, fontWeight: '700', padding: 15, textAlign: 'center' },
+  screen: { gap: 14 }, heroCard: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 16, borderWidth: 1, padding: 18 }, eyebrow: { color: '#91A09C', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }, leagueName: { color: colors.text, fontSize: 25, fontWeight: '900', marginTop: 5 }, stats: { borderTopColor: '#263330', borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-between', marginTop: 17, paddingTop: 13 }, statValue: { color: colors.accent, fontSize: 17, fontWeight: '900' }, statLabel: { color: colors.textSecondary, fontSize: 8, fontWeight: '800', letterSpacing: .6, marginTop: 3 }, sectionTitle: { color: colors.text, fontSize: 11, fontWeight: '900', letterSpacing: 1, paddingHorizontal: 2 }, postHeading: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' }, createPostButton: { alignItems: 'center', backgroundColor: colors.accent, borderRadius: 8, flexDirection: 'row', gap: 6, paddingHorizontal: 10, paddingVertical: 8 }, createPostText: { color: colors.background, fontSize: 8, fontWeight: '900', letterSpacing: .5 }, emptyPosts: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border, borderRadius: 14, borderWidth: 1, padding: 20 }, emptyPostTitle: { color: colors.text, fontSize: 13, fontWeight: '900', marginTop: 8 }, emptyPostCopy: { color: colors.textSecondary, fontSize: 10, marginTop: 4 }, postCard: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 15, borderWidth: 1, overflow: 'hidden' }, postImage: { aspectRatio: 16 / 9, width: '100%' }, postContent: { padding: 16 }, postMeta: { color: colors.accent, fontSize: 8, fontWeight: '900', letterSpacing: .5 }, postTitle: { color: colors.text, fontSize: 18, fontWeight: '900', lineHeight: 23, marginTop: 6 }, postBody: { color: colors.textSecondary, fontSize: 12, lineHeight: 19, marginTop: 8 }, toolGrid: { gap: 9 }, toolCard: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border, borderRadius: 13, borderWidth: 1, flexDirection: 'row', minHeight: 70, padding: 11 }, pressed: { opacity: .72, transform: [{ scale: .985 }] }, toolIcon: { alignItems: 'center', backgroundColor: '#17221E', borderRadius: 10, height: 42, justifyContent: 'center', width: 42 }, toolText: { flex: 1, marginHorizontal: 11 }, toolTitle: { color: colors.text, fontSize: 14, fontWeight: '900' }, toolDescription: { color: colors.textSecondary, fontSize: 10, lineHeight: 14, marginTop: 3 }, backButton: { alignItems: 'center', alignSelf: 'flex-start', flexDirection: 'row', marginLeft: -4, paddingVertical: 4 }, backText: { color: colors.text, fontSize: 11, fontWeight: '800', letterSpacing: .7 }, detailHeader: { alignItems: 'center', flexDirection: 'row', gap: 12, marginBottom: 2 }, detailIcon: { alignItems: 'center', backgroundColor: '#17221E', borderRadius: 13, height: 52, justifyContent: 'center', width: 52 }, detailTitle: { color: colors.text, fontSize: 23, fontWeight: '900', marginTop: 3 }, detailCard: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 16, borderWidth: 1, overflow: 'hidden' }, detailRow: { alignItems: 'center', borderBottomColor: '#202A28', borderBottomWidth: 1, flexDirection: 'row', minHeight: 64, paddingHorizontal: 15 }, detailCopy: { flex: 1, paddingVertical: 10 }, detailLabel: { color: colors.text, fontSize: 12, fontWeight: '800' }, detailValue: { color: colors.textSecondary, fontSize: 11, lineHeight: 16, marginTop: 3 }, badge: { borderColor: colors.accent, borderRadius: 5, borderWidth: 1, color: colors.accent, fontSize: 8, fontWeight: '900', letterSpacing: .5, paddingHorizontal: 6, paddingVertical: 4 }, commissionerBadge: { backgroundColor: '#1D2D17' }, rulesIntro: { backgroundColor: '#17221E', borderColor: '#31523A', borderRadius: 12, borderWidth: 1, padding: 13 }, rulesIntroTitle: { color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: .8 }, rulesIntroCopy: { color: colors.textSecondary, fontSize: 11, marginTop: 4 }, rulesCard: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 13, borderWidth: 1, overflow: 'hidden' }, rulesHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 52, paddingHorizontal: 15 }, rulesTitle: { color: colors.text, fontSize: 11, fontWeight: '900', letterSpacing: .7 }, ruleRow: { alignItems: 'center', borderTopColor: '#202A28', borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 43, paddingHorizontal: 15 }, ruleLabel: { color: colors.textSecondary, flex: 1, fontSize: 12, fontWeight: '700', paddingRight: 12 }, ruleValue: { color: colors.accent, fontSize: 12, fontWeight: '900', textAlign: 'right' }, activityCard: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 16, borderWidth: 1, overflow: 'hidden' }, activityRow: { alignItems: 'flex-start', borderBottomColor: '#202A28', borderBottomWidth: 1, flexDirection: 'row', minHeight: 73, padding: 13 }, activityIcon: { alignItems: 'center', backgroundColor: '#17221E', borderRadius: 16, height: 32, justifyContent: 'center', marginRight: 10, width: 32 }, activityCopy: { flex: 1 }, activityDate: { color: '#879793', fontSize: 9, fontWeight: '800', letterSpacing: .35 }, activitySummary: { color: colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: 4 }, activityActor: { color: colors.text, fontWeight: '900' }, feedStatus: { color: colors.textSecondary, fontSize: 11, fontWeight: '700', padding: 15, textAlign: 'center' }, rank: { alignItems: 'center', backgroundColor: '#17221E', borderRadius: 16, height: 32, justifyContent: 'center', marginRight: 10, width: 32 }, rankText: { color: colors.accent, fontSize: 11, fontWeight: '900' }, peopleBadges: { alignItems: 'flex-end', gap: 4 }, emptyPeople: { color: colors.textSecondary, fontSize: 12, padding: 20, textAlign: 'center' },
 });
 
 const draftStyles = StyleSheet.create({
   summary: { backgroundColor: '#17221E', borderColor: '#31523A', borderRadius: 12, borderWidth: 1, padding: 13 },
+  scheduleRow: { flexDirection: 'row', gap: 8, marginVertical: 12 },
+  scheduleInput: { backgroundColor: '#101516', borderColor: colors.border, borderRadius: 9, borderWidth: 1, color: colors.text, flex: 1, minHeight: 42, paddingHorizontal: 10 },
+  orderRow: { flexDirection: 'row', gap: 8 },
+  orderCard: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 9, borderWidth: 1, padding: 10, width: 128 },
+  currentOrderCard: { borderColor: colors.accent },
+  searchInput: { backgroundColor: '#101516', borderColor: colors.border, borderRadius: 11, borderWidth: 1, color: colors.text, minHeight: 46, paddingHorizontal: 12 },
+  pickButton: { backgroundColor: colors.accent, borderRadius: 7, paddingHorizontal: 10, paddingVertical: 8 },
+  pickButtonText: { color: colors.background, fontSize: 9, fontWeight: '900', letterSpacing: .5 },
+  disabledPickButton: { backgroundColor: '#323A38', borderColor: '#4A5552', borderWidth: 1 },
+  disabledPickButtonText: { color: '#7D8986' },
+  ineligiblePlayer: { opacity: .58 },
+  tabBar: { backgroundColor: '#101516', borderColor: colors.border, borderRadius: 10, borderWidth: 1, flexDirection: 'row', padding: 3 },
+  tab: { alignItems: 'center', borderRadius: 7, flex: 1, paddingVertical: 9 },
+  activeTab: { backgroundColor: '#243614' },
+  tabText: { color: colors.muted, fontSize: 9, fontWeight: '900' },
+  activeTabText: { color: colors.accent },
+  boardPickNumber: { color: colors.accent, fontSize: 12, fontWeight: '900', width: 38 },
+  rosterPosition: { color: colors.accent, fontSize: 9, fontWeight: '900', width: 52 },
+  teamView: { gap: 10 },
+  teamSelector: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 12, borderWidth: 1, overflow: 'hidden', zIndex: 10 },
+  teamSelectorButton: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 58, paddingHorizontal: 14 },
+  teamSelectorLabel: { color: colors.textSecondary, fontSize: 8, fontWeight: '900', letterSpacing: .8 },
+  teamSelectorName: { color: colors.text, fontSize: 14, fontWeight: '900', marginTop: 3 },
+  teamMenu: { borderTopColor: colors.border, borderTopWidth: 1 },
+  teamOption: { alignItems: 'center', borderTopColor: '#202A28', borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 50, paddingHorizontal: 14 },
+  selectedTeamOption: { backgroundColor: '#17221E' },
+  teamOptionName: { color: colors.text, fontSize: 12, fontWeight: '800' },
+  yourTeamLabel: { color: colors.accent, fontSize: 7, fontWeight: '900', letterSpacing: .6, marginTop: 2 },
   scroller: { marginHorizontal: -2 }, headerRow: { flexDirection: 'row' }, boardHeaderRow: { flexDirection: 'row' }, roundHeader: { alignItems: 'center', backgroundColor: '#111A18', borderColor: colors.border, borderWidth: 1, height: 54, justifyContent: 'center', width: 62 }, roundHeaderText: { color: colors.textSecondary, fontSize: 8, fontWeight: '900', letterSpacing: .5 }, teamHeader: { alignItems: 'center', backgroundColor: '#111A18', borderColor: colors.border, borderWidth: 1, height: 54, justifyContent: 'center', paddingHorizontal: 6, width: 112 }, teamHeaderText: { color: colors.text, fontSize: 9, fontWeight: '900', textAlign: 'center' },
   liveButton: { alignItems: 'center', alignSelf: 'flex-start', backgroundColor: colors.accent, borderRadius: 9, flexDirection: 'row', gap: 7, paddingHorizontal: 12, paddingVertical: 9 }, liveButtonText: { color: colors.background, fontSize: 10, fontWeight: '900', letterSpacing: .6 }, boardRow: { flexDirection: 'row' }, roundCell: { alignItems: 'center', backgroundColor: '#101516', borderColor: colors.border, borderWidth: 1, justifyContent: 'center', minHeight: 74, width: 62 }, roundNumber: { color: colors.accent, fontSize: 12, fontWeight: '900', textAlign: 'center' }, roundPosition: { color: colors.textSecondary, fontSize: 8, fontWeight: '800', marginTop: 3 }, pickCell: { borderColor: colors.border, borderWidth: 1, justifyContent: 'center', minHeight: 74, paddingHorizontal: 8, width: 112 }, openPickCell: { backgroundColor: '#101516', borderColor: '#293835', borderWidth: 1, justifyContent: 'center', minHeight: 74, paddingHorizontal: 8, width: 112 }, openPickText: { color: colors.muted, fontSize: 9, fontWeight: '900', letterSpacing: .5 }, pickName: { color: colors.text, fontSize: 11, fontWeight: '900' }, pickPosition: { fontSize: 9, fontWeight: '900', marginTop: 3 }, pickNumber: { color: colors.textSecondary, fontSize: 8, fontWeight: '800', marginTop: 3 },
+});
+
+const tradeStyles = StyleSheet.create({
+  notice: { backgroundColor: '#17221E', borderColor: '#31523A', borderRadius: 12, borderWidth: 1, padding: 13 },
+  makeTradeButton: { alignItems: 'center', alignSelf: 'flex-start', backgroundColor: colors.accent, borderRadius: 9, flexDirection: 'row', gap: 6, paddingHorizontal: 13, paddingVertical: 10 },
+  makeTradeText: { color: colors.background, fontSize: 10, fontWeight: '900', letterSpacing: .6 },
+  managerRow: { gap: 8, paddingVertical: 12 },
+  managerChip: { backgroundColor: '#111A18', borderColor: colors.border, borderRadius: 9, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 9 },
+  assetSection: { borderTopColor: colors.border, borderTopWidth: 1, padding: 13 },
+  assetLabel: { color: colors.textSecondary, fontSize: 9, fontWeight: '900', letterSpacing: .7, marginBottom: 8 },
+  assets: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  asset: { backgroundColor: '#111A18', borderColor: colors.border, borderRadius: 9, borderWidth: 1, minWidth: 104, paddingHorizontal: 10, paddingVertical: 8 },
+  selectedAsset: { backgroundColor: '#213316', borderColor: colors.accent },
+  assetName: { color: colors.text, fontSize: 11, fontWeight: '900' },
+  assetMeta: { color: colors.textSecondary, fontSize: 8, fontWeight: '800', marginTop: 2 },
+  validation: { color: '#FFAE62', fontSize: 10, paddingHorizontal: 13, paddingBottom: 10 },
+  offer: { borderBottomColor: colors.border, borderBottomWidth: 1, padding: 14 },
+  offerSummary: { paddingBottom: 2 },
+  offerHeading: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  status: { color: colors.accent, fontSize: 8, fontWeight: '900', letterSpacing: .5 },
+  voteCount: { color: '#FFAE62', fontSize: 10, fontWeight: '800', marginTop: 8 },
+  viewDetails: { color: colors.accent, fontSize: 8, fontWeight: '900', letterSpacing: .5, marginTop: 9 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 11 },
+  action: { backgroundColor: colors.accent, borderRadius: 7, paddingHorizontal: 10, paddingVertical: 7 },
+  dangerAction: { backgroundColor: '#321D1D', borderColor: '#874343', borderWidth: 1 },
+  actionText: { color: colors.background, fontSize: 8, fontWeight: '900' },
+  dangerText: { color: '#FF8D8D' },
+  inputLabel: { color: colors.textSecondary, fontSize: 9, fontWeight: '900', letterSpacing: .7, marginBottom: 6, marginTop: 15 },
+  modalBackdrop: { alignItems: 'center', backgroundColor: 'rgba(0,0,0,.76)', flex: 1, justifyContent: 'center', padding: 18 },
+  wizard: { backgroundColor: '#0E1514', borderColor: colors.border, borderRadius: 18, borderWidth: 1, maxHeight: '88%', maxWidth: 560, overflow: 'hidden', width: '100%' },
+  wizardHeader: { alignItems: 'flex-start', borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', padding: 18 },
+  wizardTitle: { color: colors.text, fontSize: 19, fontWeight: '900', marginTop: 4 },
+  wizardContent: { paddingVertical: 8 },
+  verticalChoices: { gap: 8, padding: 14 },
+  managerChoice: { alignItems: 'center', backgroundColor: '#111A18', borderColor: colors.border, borderRadius: 10, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 55, paddingHorizontal: 12 },
+  wizardFooter: { alignItems: 'center', borderTopColor: colors.border, borderTopWidth: 1, flexDirection: 'row', justifyContent: 'flex-end', gap: 8, padding: 14 },
+  nextButton: { backgroundColor: colors.accent, borderRadius: 8, paddingHorizontal: 15, paddingVertical: 9 },
+  disabledNext: { backgroundColor: '#3A4441', opacity: .55 },
+  nextText: { color: colors.background, fontSize: 9, fontWeight: '900', letterSpacing: .6 },
+  detailsDialog: { backgroundColor: '#0E1514', borderColor: colors.border, borderRadius: 18, borderWidth: 1, maxWidth: 500, overflow: 'hidden', width: '100%' },
+  detailAssets: { alignItems: 'center', gap: 10, padding: 18 },
+  detailSide: { alignSelf: 'stretch', backgroundColor: '#111A18', borderColor: colors.border, borderRadius: 10, borderWidth: 1, padding: 13 },
+  detailAsset: { color: colors.text, fontSize: 12, fontWeight: '700', marginTop: 6 },
+  detailMeta: { borderTopColor: colors.border, borderTopWidth: 1, padding: 16 },
+});
+
+const playoffStyles = StyleSheet.create({
+  summary: { backgroundColor: '#17221E', borderColor: '#31523A', borderRadius: 12, borderWidth: 1, padding: 13 },
+  bracket: { alignItems: 'stretch', gap: 12, paddingBottom: 4, paddingRight: 4 },
+  wideBracket: { flexGrow: 1 },
+  round: { backgroundColor: '#0D1413', borderColor: colors.border, borderRadius: 14, borderWidth: 1, overflow: 'hidden' },
+  roundHeader: { alignItems: 'center', backgroundColor: '#17221E', borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 48, paddingHorizontal: 12 },
+  roundTitle: { color: colors.text, fontSize: 10, fontWeight: '900', letterSpacing: .7 },
+  roundWeek: { color: colors.accent, fontSize: 8, fontWeight: '900', letterSpacing: .5 },
+  games: { flex: 1, gap: 12, justifyContent: 'space-around', padding: 10 },
+  laterRound: { paddingVertical: 28 },
+  game: { backgroundColor: colors.card, borderColor: '#2B3835', borderRadius: 10, borderWidth: 1, overflow: 'hidden' },
+  currentGame: { borderColor: colors.accent },
+  teamRow: { alignItems: 'center', flexDirection: 'row', minHeight: 42, paddingHorizontal: 9 },
+  secondTeam: { borderTopColor: '#263330', borderTopWidth: 1 },
+  seed: { alignItems: 'center', backgroundColor: '#1C2825', borderRadius: 10, height: 20, justifyContent: 'center', marginRight: 7, width: 20 },
+  seedText: { color: colors.accent, fontSize: 8, fontWeight: '900' },
+  teamName: { color: colors.text, flex: 1, fontSize: 10, fontWeight: '800' },
+  placeholder: { color: colors.textSecondary, fontStyle: 'italic', fontWeight: '600' },
+  teamScore: { color: colors.text, fontSize: 11, fontWeight: '900', marginLeft: 6 },
+  note: { color: colors.textSecondary, fontSize: 9, lineHeight: 14, paddingHorizontal: 4 },
 });
 
 const liveDraftStyles: any = StyleSheet.create({

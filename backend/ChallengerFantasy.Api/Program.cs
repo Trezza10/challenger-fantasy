@@ -1,16 +1,42 @@
 using System.Security.Claims;
 using ChallengerFantasy.Api.Auth;
+using ChallengerFantasy.Api.Middleware;
 using ChallengerFantasy.Api.Options;
+using ChallengerFantasy.Api.Persistence;
 using ChallengerFantasy.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Logging.ClearProviders();
+builder.Logging.AddSimpleConsole(options =>
+{
+    options.SingleLine = true;
+    options.TimestampFormat = "HH:mm:ss.fff ";
+});
+
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
+var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Frontend", policy =>
+    {
+        policy
+            .SetIsOriginAllowed(origin =>
+            {
+                if (corsOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase)) return true;
+                if (!builder.Environment.IsDevelopment()) return false;
+                return Uri.TryCreate(origin, UriKind.Absolute, out var uri) && uri.IsLoopback;
+            })
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
 builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new OpenApiInfo
@@ -31,9 +57,23 @@ builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.Configure<ClerkOptions>(builder.Configuration.GetSection(ClerkOptions.SectionName));
 builder.Services.Configure<ApiAuthOptions>(builder.Configuration.GetSection(ApiAuthOptions.SectionName));
+builder.Services.Configure<DevelopmentDataOptions>(builder.Configuration.GetSection(DevelopmentDataOptions.SectionName));
+builder.Services.Configure<DatabaseOptions>(builder.Configuration.GetSection(DatabaseOptions.SectionName));
 
 var clerk = builder.Configuration.GetSection(ClerkOptions.SectionName).Get<ClerkOptions>() ?? new ClerkOptions();
 var apiAuth = builder.Configuration.GetSection(ApiAuthOptions.SectionName).Get<ApiAuthOptions>() ?? new ApiAuthOptions();
+var database = builder.Configuration.GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>() ?? new DatabaseOptions();
+if (database.Enabled)
+{
+    var connectionString = builder.Configuration.GetConnectionString("ChallengerFantasy");
+    if (string.IsNullOrWhiteSpace(connectionString))
+        throw new InvalidOperationException(
+            "Database persistence is enabled, but ConnectionStrings:ChallengerFantasy is empty.");
+    builder.Services.AddSingleton(NpgsqlDataSource.Create(connectionString));
+    builder.Services.AddSingleton<PostgresSchemaManager>();
+    builder.Services.AddSingleton<PostgresStateRepository>();
+    builder.Services.AddHostedService<DatabaseStartupService>();
+}
 if (apiAuth.Enabled)
 {
     builder.Services
@@ -128,6 +168,9 @@ builder.Services.AddScoped<IFantasyService, FantasyService>();
 
 var app = builder.Build();
 
+app.UseMiddleware<ApiRequestLoggingMiddleware>();
+if (database.Enabled)
+    app.UseMiddleware<DatabasePersistenceMiddleware>();
 app.UseExceptionHandler();
 app.UseHttpsRedirection();
 app.UseSwagger();
@@ -137,13 +180,28 @@ app.UseSwaggerUI(options =>
     options.DocumentTitle = "Challenger Fantasy API";
     options.DisplayRequestDuration();
 });
+app.UseRouting();
+app.UseCors("Frontend");
 if (apiAuth.Enabled)
     app.UseAuthentication();
+app.UseMiddleware<LeagueMembershipMiddleware>();
 app.UseAuthorization();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
     .AllowAnonymous()
     .WithName("Health");
+app.MapGet("/health/database", async (CancellationToken cancellationToken) =>
+    {
+        if (!database.Enabled)
+            return Results.Ok(new { status = "disabled" });
+        var dataSource = app.Services.GetRequiredService<NpgsqlDataSource>();
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT 1", connection);
+        await command.ExecuteScalarAsync(cancellationToken);
+        return Results.Ok(new { status = "ok", provider = "postgresql" });
+    })
+    .AllowAnonymous()
+    .WithName("DatabaseHealth");
 app.MapControllers();
 
 app.Run();

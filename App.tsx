@@ -1,8 +1,12 @@
 import { ClerkProvider, useAuth } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, SafeAreaView, StyleSheet } from 'react-native';
+import { serviceConfig } from './src/config/services';
 import { AuthScreen } from './src/features/auth/AuthScreen';
 import { AppNavigator } from './src/navigation/AppNavigator';
+import { clearServiceDataCache } from './src/hooks/useServiceData';
+import { setApiTokenProvider } from './src/services/api/client';
 import { colors } from './src/theme/colors';
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
@@ -22,9 +26,22 @@ export default function App() {
 
 /** Prevents protected app services and screens from mounting until Clerk confirms a session. */
 function AuthenticatedApp() {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { getToken, isLoaded, isSignedIn, userId } = useAuth();
+  const [isApiReady, setIsApiReady] = useState(!serviceConfig.apiAuthEnabled);
+  const previousUserId = useRef<string | null | undefined>(undefined);
 
-  if (!isLoaded) {
+  if (isLoaded && previousUserId.current !== userId) {
+    clearServiceDataCache();
+    previousUserId.current = userId;
+  }
+
+  useEffect(() => {
+    setApiTokenProvider(getToken);
+    setIsApiReady(true);
+    return () => setApiTokenProvider(null);
+  }, [getToken]);
+
+  if (!isLoaded || !isApiReady) {
     return (
       <SafeAreaView style={styles.loading}>
         <ActivityIndicator color={colors.accent} size="large" />

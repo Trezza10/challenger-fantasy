@@ -4,9 +4,20 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>ChallengerFantasy.Api</RootNamespace>
+    <!-- Identifies this project’s local .NET user-secrets store. Secret values
+         remain outside the repository and are never committed with this ID. -->
+    <UserSecretsId>challenger-fantasy-api-7f58a778-2748-4e90-b0a3-50a9d28ec281</UserSecretsId>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.22" />
+    <PackageReference Include="Npgsql" Version="8.0.6" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Publish the ordered SQL scripts beside the application for deployments. -->
+    <Content Include="../database/*.sql" Link="database/%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
   </ItemGroup>
 </Project>

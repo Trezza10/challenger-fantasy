@@ -16,6 +16,7 @@ interface MatchupPlayerProps {
   hoveredPlayerName: string | null;
   canPlayCard: (card: PowerCard, player: MatchupPlayerData, isManagerTeam: boolean) => boolean;
   onRegisterDropTarget: (player: MatchupPlayerData, isManagerTeam: boolean, node: View | null) => void;
+  onSelectScore: (player: MatchupPlayerData) => void;
   onSelectPlayer: (player: MatchupPlayerData) => void;
   position: Position;
   rightAppliedCards?: AppliedModifier[];
@@ -25,7 +26,7 @@ interface MatchupPlayerProps {
 }
 
 /** Renders an individual position battle inside the matchup lineup. */
-export function MatchupPlayer({ canPlayCard, draggingCard, hoveredPlayerName, leftAppliedCards, leftName, leftPlayer, leftScore, onRegisterDropTarget, onSelectPlayer, position, rightAppliedCards, rightName, rightPlayer, rightScore }: MatchupPlayerProps) {
+export function MatchupPlayer({ canPlayCard, draggingCard, hoveredPlayerName, leftAppliedCards, leftName, leftPlayer, leftScore, onRegisterDropTarget, onSelectPlayer, onSelectScore, position, rightAppliedCards, rightName, rightPlayer, rightScore }: MatchupPlayerProps) {
   const leftIsValid = Boolean(draggingCard && canPlayCard(draggingCard, leftPlayer, true));
   const rightIsValid = Boolean(draggingCard && canPlayCard(draggingCard, rightPlayer, false));
   const leftIsInvalid = Boolean(draggingCard && !leftIsValid);
@@ -35,9 +36,9 @@ export function MatchupPlayer({ canPlayCard, draggingCard, hoveredPlayerName, le
       <View ref={(node) => onRegisterDropTarget(leftPlayer, true, node)} style={[styles.playerSide, leftIsInvalid && styles.invalidTarget]}>
         <Pressable onPress={() => onSelectPlayer(leftPlayer)} style={styles.playerPressable}><Avatar isValidTarget={leftIsValid} name={leftName} /><PlayerDetails appliedCards={leftAppliedCards} isHoveredTarget={hoveredPlayerName === leftPlayer.name} name={leftName} position={position} team={leftPlayer.team} /></Pressable>
       </View>
-      <Text numberOfLines={1} style={[styles.score, leftIsInvalid && styles.invalidTarget]}>{leftScore}</Text>
+      <Pressable accessibilityLabel={`View ${leftName} score breakdown`} onPress={() => onSelectScore(leftPlayer)} style={[styles.scoreButton, leftIsInvalid && styles.invalidTarget]}><Text numberOfLines={1} style={styles.score}>{leftScore}</Text></Pressable>
       <Text style={[styles.position, { color: getPositionColor(position) }]}>{position}</Text>
-      <Text numberOfLines={1} style={[styles.score, styles.rightScore, rightIsInvalid && styles.invalidTarget]}>{rightScore}</Text>
+      <Pressable accessibilityLabel={`View ${rightName} score breakdown`} onPress={() => onSelectScore(rightPlayer)} style={[styles.scoreButton, styles.rightScore, rightIsInvalid && styles.invalidTarget]}><Text numberOfLines={1} style={styles.score}>{rightScore}</Text></Pressable>
       <View ref={(node) => onRegisterDropTarget(rightPlayer, false, node)} style={[styles.playerSide, styles.rightPlayer, rightIsInvalid && styles.invalidTarget]}>
         <Pressable onPress={() => onSelectPlayer(rightPlayer)} style={[styles.playerPressable, styles.rightPlayer]}><PlayerDetails appliedCards={rightAppliedCards} isHoveredTarget={hoveredPlayerName === rightPlayer.name} name={rightName} position={position} team={rightPlayer.team} /><Avatar isValidTarget={rightIsValid} name={rightName} opponent /></Pressable>
       </View>
@@ -73,7 +74,8 @@ const styles = StyleSheet.create({
   teamMeta: { color: '#BBC5C3' },
   appliedIcons: { flexDirection: 'row', gap: 3, marginTop: 3 },
   // A fixed width prevents decimal scores from wrapping into two lines.
-  score: { color: colors.text, flexShrink: 0, fontSize: 12, fontWeight: '800', textAlign: 'center', width: 38 },
+  scoreButton: { alignItems: 'center', flexShrink: 0, justifyContent: 'center', minHeight: 38, width: 38 },
+  score: { color: colors.text, fontSize: 12, fontWeight: '800', textAlign: 'center' },
   rightScore: { marginRight: 6 },
   position: { color: '#8B9693', fontSize: 8, fontWeight: '800', textAlign: 'center', width: 34 },
 });

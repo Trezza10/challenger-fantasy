@@ -14,6 +14,11 @@ interface ServiceDataResult<T> extends ServiceDataState<T> {
 // A named key lets data survive a screen unmount/remount, where a callback gets a new identity.
 const serviceCache = new Map<unknown, unknown>();
 
+/** Clears account-scoped API data when the active Clerk user changes. */
+export function clearServiceDataCache() {
+  serviceCache.clear();
+}
+
 /**
  * Loads data from the active service provider and preserves it for the app session.
  * Refetching keeps already rendered data on screen while the current request is in flight.

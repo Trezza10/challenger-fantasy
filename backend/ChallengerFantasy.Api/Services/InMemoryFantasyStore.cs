@@ -1,4 +1,6 @@
 using ChallengerFantasy.Api.Domain;
+using ChallengerFantasy.Api.Options;
+using Microsoft.Extensions.Options;
 
 namespace ChallengerFantasy.Api.Services;
 
@@ -11,16 +13,45 @@ public sealed class InMemoryFantasyStore
     public Dictionary<string, League> Leagues { get; } = [];
     public Dictionary<string, Player> Players { get; } = [];
     public Dictionary<string, Matchup> Matchups { get; } = [];
+    public Dictionary<(string LeagueId, string UserId), LeagueMembership> Memberships { get; } = [];
+    public Dictionary<string, string> LeagueIdsByJoinCode { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, LeagueInvitation> InvitationsByToken { get; } = new(StringComparer.Ordinal);
     public Dictionary<(string LeagueId, string UserId), Roster> Rosters { get; } = [];
     public Dictionary<(string LeagueId, string UserId), List<PowerCard>> Hands { get; } = [];
+    public Dictionary<string, PowerCard> CardCatalog { get; } = [];
+    public Dictionary<(string LeagueId, string UserId, int Week), CardClaimProgress> CardClaims { get; } = [];
     public List<ActivityEntry> Activities { get; } = [];
     public List<WaiverClaim> Waivers { get; } = [];
     public List<TradeOffer> Trades { get; } = [];
     public List<ChatMessage> Messages { get; } = [];
     public List<DraftPick> DraftPicks { get; } = [];
+    public List<LeaguePost> LeaguePosts { get; } = [];
+    public List<NewsStory> CommunityPosts { get; } = [];
 
-    public InMemoryFantasyStore()
+    public InMemoryFantasyStore(IOptions<DevelopmentDataOptions>? options = null)
     {
+        CommunityPosts.AddRange([
+            new NewsStory("community-1", "TEAM REPORT", "Philadelphia’s offense enters the week with new red-zone wrinkles", "Beat reporter Lena Ortiz breaks down the personnel packages fantasy managers should watch.", "Philadelphia spent the week emphasizing condensed formations and running-back motion near the goal line. The changes could create additional scoring opportunities across the offense, particularly when defenses commit extra help inside.", DateTimeOffset.UtcNow.AddHours(-2)),
+            new NewsStory("community-2", "INJURY WATCH", "Sunday availability remains uncertain for several featured receivers", "Final practice reports will shape lineup decisions around the league.", "Several receiving groups remain fluid heading into the weekend. Managers should monitor official game-status reports and be prepared to adjust before individual kickoffs.", DateTimeOffset.UtcNow.AddHours(-5)),
+            new NewsStory("community-3", "FILM ROOM", "Why defensive pressure rates could decide this week’s closest matchups", "Analyst Marcus Chen highlights three fronts creating difficult fantasy decisions.", "Pressure rate has become one of the clearest signals for volatile quarterback and kicker outcomes. This week’s slate includes several mismatches that could also elevate the value of defensive units.", DateTimeOffset.UtcNow.AddHours(-9)),
+        ]);
+        var cards = new[]
+        {
+            Card("ground-control", "Ground Control", CardTargetTeam.SELF, ["RB", "FLEX"], "football"),
+            Card("pocket-protector", "Pocket Protector", CardTargetTeam.SELF, ["QB"], "shield"),
+            Card("momentum-shift", "Momentum Shift", CardTargetTeam.OPPONENT, ["ALL"], "swap-horizontal"),
+            Card("air-raid", "Air Raid", CardTargetTeam.SELF, ["QB", "WR", "TE"], "rocket"),
+            Card("red-zone-raider", "Red Zone Raider", CardTargetTeam.SELF, ["RB", "WR", "TE"], "flame"),
+            Card("shutdown", "Shutdown", CardTargetTeam.OPPONENT, ["WR", "TE"], "lock-closed"),
+            Card("breakaway-threat", "Breakaway Threat", CardTargetTeam.SELF, ["RB", "WR", "FLEX"], "flash"),
+            Card("ice-the-kicker", "Ice the Kicker", CardTargetTeam.OPPONENT, ["K"], "timer"),
+            Card("defensive-surge", "Defensive Surge", CardTargetTeam.SELF, ["DEF"], "shield"),
+            Card("coachs-challenge", "Coach's Challenge", CardTargetTeam.SELF, ["COACH"], "checkmark-circle"),
+            Card("volume-play", "Volume Play", CardTargetTeam.SELF, ["WR", "TE"], "stats-chart"),
+            Card("second-half-sniper", "Second-Half Sniper", CardTargetTeam.SELF, ["QB", "WR"], "radio"),
+        };
+        foreach (var card in cards) CardCatalog[card.Id] = card;
+
         var manager = new[]
         {
             Player("jalen-hurts", "J. Hurts", RosterPosition.QB, "PHI", 32.5),
@@ -62,11 +93,21 @@ public sealed class InMemoryFantasyStore
         };
         foreach (var player in manager.Concat(opponent).Concat(freeAgents))
             Players[player.Id] = player;
+        var positions = Enum.GetValues<RosterPosition>();
+        for (var index = 1; index <= 260; index++)
+        {
+            var position = positions[(index - 1) % positions.Length];
+            var id = $"prospect-{index:000}";
+            Players[id] = Player(id, $"Prospect {index:000}", position, $"T{((index - 1) % 32) + 1:00}", 0);
+        }
+        if (options?.Value.SeedDemoData != true) return;
 
-        var league = new League("challengers", "Challengers League", 10, 5, "replace-with-clerk-user-id");
+        var league = new League("challengers", "Challengers League", 1, 10, 5, true, DateTimeOffset.UtcNow.AddDays(-30), "user_demo");
         Leagues[league.Id] = league;
 
         const string seedUser = "user_demo";
+        Memberships[(league.Id, seedUser)] = new LeagueMembership(league.Id, seedUser, "Development Manager", "manager@example.com", "Trezza Titans", "commissioner", 3, 2, 0, 618.4, 590.2, DateTimeOffset.UtcNow);
+        LeagueIdsByJoinCode["CHALLENG"] = league.Id;
         var roster = new Roster(
             manager.Take(10).Select((player, index) => new RosterSlot($"starter-{index}", "starter", player.Position, player)).ToArray(),
             manager.Skip(10).Select((player, index) => new RosterSlot($"bench-{index}", "bench", player.Position, player)).ToArray());
@@ -74,9 +115,9 @@ public sealed class InMemoryFantasyStore
 
         var hand = new List<PowerCard>
         {
-            Card("ground-control", "Ground Control", CardTargetTeam.SELF, ["RB", "FLEX"], "football"),
-            Card("pocket-protector", "Pocket Protector", CardTargetTeam.SELF, ["QB"], "shield"),
-            Card("momentum-shift", "Momentum Shift", CardTargetTeam.OPPONENT, ["ALL"], "swap-horizontal", 2),
+            CardCatalog["ground-control"],
+            CardCatalog["pocket-protector"],
+            CardCatalog["momentum-shift"] with { Quantity = 2 },
         };
         Hands[(league.Id, seedUser)] = hand;
 
@@ -95,8 +136,10 @@ public sealed class InMemoryFantasyStore
     public Roster GetOrCreateRoster(string leagueId, string userId)
     {
         if (Rosters.TryGetValue((leagueId, userId), out var roster)) return roster;
-        var seed = Rosters.Values.First();
-        roster = new Roster(seed.Starters.ToArray(), seed.Bench.ToArray());
+        var seed = Rosters.Values.FirstOrDefault();
+        roster = seed is null
+            ? new Roster([], [])
+            : new Roster(seed.Starters.ToArray(), seed.Bench.ToArray());
         Rosters[(leagueId, userId)] = roster;
         return roster;
     }
@@ -104,13 +147,36 @@ public sealed class InMemoryFantasyStore
     public List<PowerCard> GetOrCreateHand(string leagueId, string userId)
     {
         if (Hands.TryGetValue((leagueId, userId), out var hand)) return hand;
-        hand = Hands.Values.First().Select(card => card with { }).ToList();
+        hand = [];
         Hands[(leagueId, userId)] = hand;
         return hand;
     }
 
     private static Player Player(string id, string name, RosterPosition position, string team, double score) =>
-        new(id, name, position, team, score, false, [new("Status", "Upcoming")], [new("Last game", $"{score:0.0} pts")]);
+        new(id, name, position, team, score, 0, false, [new("Status", "Upcoming")], [new("Last game", $"{score:0.0} pts")], ScoringRules.CreateDevelopmentBreakdown(position, score), CreateWeeklyHistory(id, position, score));
+
+    private static IReadOnlyList<PlayerWeekHistory> CreateWeeklyHistory(string id, RosterPosition position, double score)
+    {
+        if (score <= 0) return [];
+        var opponents = new[] { "DAL", "NYG", "WAS", "GB", "MIN", "CHI", "SF", "SEA" };
+        var seed = Math.Abs(StringComparer.Ordinal.GetHashCode(id));
+        return Enumerable.Range(1, 4).Select(week =>
+        {
+            var basePoints = Math.Round(Math.Max(1, score + ((seed + week * 7) % 9 - 4) * 0.8), 1);
+            var cardPoints = week == 3 && seed % 3 == 0 ? 3d : 0d;
+            return new PlayerWeekHistory(week, opponents[(seed + week) % opponents.Length], DevelopmentStatLine(position, basePoints), basePoints, cardPoints);
+        }).ToArray();
+    }
+
+    private static string DevelopmentStatLine(RosterPosition position, double points) => position switch
+    {
+        RosterPosition.QB => $"{Math.Round(points / .04):0} pass yds · {Math.Max(1, Math.Floor(points / 10)):0} pass TD",
+        RosterPosition.RB or RosterPosition.FLEX => $"{Math.Round(points * 5):0} rush yds · {Math.Max(1, Math.Floor(points / 8)):0} TD",
+        RosterPosition.WR or RosterPosition.TE => $"{Math.Max(2, Math.Round(points / 3)):0} rec · {Math.Round(points * 4):0} rec yds",
+        RosterPosition.DEF => $"{Math.Max(1, Math.Round(points / 3)):0} sacks · {Math.Max(0, Math.Floor(points / 6)):0} takeaway",
+        RosterPosition.K => $"{Math.Max(1, Math.Round(points / 4)):0} FG · {Math.Max(1, Math.Round(points / 3)):0} XP",
+        _ => points >= 3 ? "Team win" : "Team loss",
+    };
 
     private static PowerCard Card(string id, string label, CardTargetTeam target, string[] positions, string icon, int quantity = 1) =>
         new(id, label, $"Apply {label} to an eligible player.", $"{label} effect", "This matchup", "#B6FF00", icon, target, positions, CardRarity.Rare, CardType.Strategy, quantity);
